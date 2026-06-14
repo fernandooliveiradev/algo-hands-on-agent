@@ -1,13 +1,43 @@
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Generator
+from typing import Any
 
 from agno.agent import Agent
+from pydantic import BaseModel
 
 from algo_hands_on.agent_factory import build_agent, build_parser_agent
 from algo_hands_on.config import Settings
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
 from algo_hands_on.schemas import TutorTurn
+
+INTERNAL_NARRATION_PATTERNS = [
+    re.compile(
+        r"(?is)\bvou\s+(?:buscar|carregar|consultar|seguir|usar)\s+(?:as?\s+)?"
+        r"(?:orientações|instruções|skills?|ferramentas?|regras?|dependências|contexto|políticas)"
+        r".*?(?=(?:\n|Olá|Perfeito|Vamos|Prazer|Agora|Antes|\Z))"
+    ),
+    re.compile(
+        r"(?im)^\s*(?:carregando|consultando|buscando)\s+"
+        r"(?:skill|instruções|orientações|ferramentas|contexto).*?$"
+    ),
+]
+EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001f1e6-\U0001f1ff"
+    "\U0001f300-\U0001f5ff"
+    "\U0001f600-\U0001f64f"
+    "\U0001f680-\U0001f6ff"
+    "\U0001f700-\U0001f77f"
+    "\U0001f780-\U0001f7ff"
+    "\U0001f800-\U0001f8ff"
+    "\U0001f900-\U0001f9ff"
+    "\U0001fa70-\U0001faff"
+    "\u2600-\u27bf"
+    "]+"
+)
 
 
 class TutoringService:
@@ -75,9 +105,68 @@ class TutoringService:
     def _turn_from_content(content: object) -> TutorTurn | None:
         if isinstance(content, TutorTurn):
             return content
+        if isinstance(content, BaseModel):
+            return TutorTurn.model_validate(content.model_dump())
         if isinstance(content, dict):
             return TutorTurn.model_validate(content)
+        if isinstance(content, str):
+            text = content.strip()
+            if not text:
+                return None
+            if text.startswith("```"):
+                text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+                text = re.sub(r"\s*```$", "", text)
+            try:
+                return TutorTurn.model_validate_json(text)
+            except json.JSONDecodeError:
+                return None
+            except Exception:
+                return None
         return None
+
+    @staticmethod
+    def _chunk_value(chunk: object, key: str, default: Any = None) -> Any:
+        if isinstance(chunk, dict):
+            return chunk.get(key, default)
+        return getattr(chunk, key, default)
+
+    @classmethod
+    def _chunk_event_name(cls, chunk: object) -> str:
+        event = cls._chunk_value(chunk, "event")
+        if event:
+            return str(event)
+        return type(chunk).__name__
+
+    @classmethod
+    def _chunk_text(cls, chunk: object) -> str | None:
+        content = cls._chunk_value(chunk, "content")
+        return content if isinstance(content, str) else None
+
+    @staticmethod
+    def _append_stream_text(current_text: str, chunk_text: str) -> tuple[str, str]:
+        """Retorna texto acumulado e o delta a renderizar.
+
+        Agno costuma enviar deltas em RunContent, mas alguns providers podem
+        devolver conteúdo cumulativo. Este helper evita duplicar texto nos dois
+        casos.
+        """
+        if not current_text:
+            return chunk_text, chunk_text
+        if chunk_text.startswith(current_text):
+            delta = chunk_text[len(current_text) :]
+            return chunk_text, delta
+        return current_text + chunk_text, chunk_text
+
+    @staticmethod
+    def _sanitize_tutor_text(text: str, *, strip_right: bool = True) -> str:
+        clean = text
+        for pattern in INTERNAL_NARRATION_PATTERNS:
+            clean = pattern.sub("", clean)
+        clean = EMOJI_PATTERN.sub("", clean)
+        clean = re.sub(r"[ \t]{2,}", " ", clean)
+        clean = re.sub(r"\n{3,}", "\n\n", clean)
+        clean = clean.lstrip()
+        return clean.rstrip() if strip_right else clean
 
     def _parse_turn(
         self,
@@ -106,8 +195,6 @@ class TutoringService:
             msg = "Agno parser não retornou TutorTurn estruturado."
             raise RuntimeError(msg)
         turn.message_markdown = tutor_text
-        if not turn.module_id:
-            turn.module_id = snapshot["current"]["current_module"]
         return turn
 
     def _finalize_turn(self, turn: TutorTurn, student_id: str, session_id: str, snapshot: dict, run_id: str) -> TutorTurn:
@@ -115,6 +202,13 @@ class TutoringService:
         self._persist_evaluation(turn, student_id, session_id)
         self._record_turn_event(turn, student_id, session_id, run_id=run_id)
         return turn
+
+    @staticmethod
+    def _fallback_turn(tutor_text: str, snapshot: dict) -> TutorTurn:
+        return TutorTurn(
+            message_markdown=tutor_text,
+            module_id=snapshot["current"]["current_module"],
+        )
 
     def run_turn(self, *, student_id: str, session_id: str, message: str) -> TutorTurn:
         self.ensure_student(student_id)
@@ -127,14 +221,17 @@ class TutoringService:
             dependencies=self._build_dependencies(student_id),
             add_dependencies_to_context=True,
         )
-        tutor_text = str(run.content or "").strip()
-        turn = self._parse_turn(
-            student_id=student_id,
-            session_id=session_id,
-            message=message,
-            tutor_text=tutor_text,
-            snapshot=snapshot,
-        )
+        tutor_text = self._sanitize_tutor_text(str(run.content or "")).strip()
+        try:
+            turn = self._parse_turn(
+                student_id=student_id,
+                session_id=session_id,
+                message=message,
+                tutor_text=tutor_text,
+                snapshot=snapshot,
+            )
+        except Exception:
+            turn = self._fallback_turn(tutor_text, snapshot)
         return self._finalize_turn(turn, student_id, session_id, snapshot, str(run.run_id))
 
     def run_turn_stream(
@@ -155,29 +252,35 @@ class TutoringService:
         )
 
         run_id = "unknown"
-        text_chunks: list[str] = []
+        tutor_text = ""
+        rendered_text = ""
         final_text = ""
-        saw_run_response_event = False
+        saw_stream_content = False
 
         for chunk in run_stream:
-            if hasattr(chunk, "run_id") and chunk.run_id:
-                run_id = str(chunk.run_id)
+            chunk_run_id = self._chunk_value(chunk, "run_id")
+            if chunk_run_id:
+                run_id = str(chunk_run_id)
 
-            event_name = str(getattr(chunk, "event", ""))
-            chunk_content = getattr(chunk, "content", None)
+            event_name = self._chunk_event_name(chunk)
+            chunk_text = self._chunk_text(chunk)
 
-            # Agno emite conteúdo de streaming em eventos RunContent / RunIntermediateContent / RunResponse
-            if event_name in {"RunContent", "RunIntermediateContent", "RunResponse"} and isinstance(chunk_content, str):
-                saw_run_response_event = True
-                text_chunks.append(chunk_content)
-                yield {"type": "content", "text": chunk_content}
+            if event_name in {"RunContent", "RunIntermediateContent"} and chunk_text:
+                saw_stream_content = True
+                tutor_text, _ = self._append_stream_text(tutor_text, chunk_text)
+                clean_text = self._sanitize_tutor_text(tutor_text, strip_right=False)
+                rendered_text, clean_delta = self._append_stream_text(rendered_text, clean_text)
+                if clean_delta:
+                    yield {"type": "content", "text": clean_delta}
                 continue
 
-            # Fallback: último chunk com texto final (RunCompleted, etc.)
-            if isinstance(chunk_content, str) and not saw_run_response_event:
-                final_text = chunk_content
+            if event_name in {"RunCompleted", "RunOutput"} and chunk_text:
+                final_text = chunk_text
 
-        tutor_text = ("".join(text_chunks) or final_text).strip()
+        if not saw_stream_content and final_text:
+            tutor_text = final_text
+
+        tutor_text = self._sanitize_tutor_text(tutor_text).strip()
         if not tutor_text:
             msg = (
                 "Agno não retornou texto ao finalizar o streaming. "
@@ -197,13 +300,7 @@ class TutoringService:
                 snapshot=snapshot,
             )
         except Exception as parse_exc:
-            # Fallback: cria um turn mínimo com o texto bruto como mensagem
-            from algo_hands_on.schemas import TutorTurn
-
-            turn = TutorTurn(
-                message_markdown=tutor_text,
-                module_id=snapshot["current"]["current_module"],
-            )
+            turn = self._fallback_turn(tutor_text, snapshot)
             yield {"type": "warning", "text": f"Parser indisponível: {parse_exc}"}
 
         turn = self._finalize_turn(turn, student_id, session_id, snapshot, run_id)

@@ -20,6 +20,19 @@ class ProgressRepository:
     """Repositório transacional do domínio pedagógico do AHO."""
 
     REQUIRED_EVIDENCE = tuple(item.value for item in EvidenceKind)
+    CLEAN_TABLES = (
+        "aho_exercise_attempts",
+        "aho_module_evidence",
+        "aho_competency_progress",
+        "aho_learning_events",
+        "aho_module_progress",
+        "aho_student_progress",
+        "aho_students",
+        "agno_sessions",
+        "agno_memories",
+        "agno_metrics",
+        "agno_evals",
+    )
 
     def __init__(self, db_path: Path) -> None:
         self.factory = SQLiteConnectionFactory(db_path)
@@ -164,6 +177,9 @@ class ProgressRepository:
             and not evaluation.used_hint
             and evaluation.score >= 0.8
         )
+        hinted_success = evaluation.result == AttemptResult.CORRECT_WITH_HINT or (
+            evaluation.result == AttemptResult.CORRECT and evaluation.used_hint
+        )
 
         with self.factory.transaction(write=True) as connection:
             connection.execute(
@@ -212,7 +228,7 @@ class ProgressRepository:
                     evaluation.competency_key,
                     status,
                     int(independent_success),
-                    int(evaluation.result == AttemptResult.CORRECT_WITH_HINT or evaluation.used_hint),
+                    int(hinted_success),
                     int(evaluation.result in {AttemptResult.INCORRECT, AttemptResult.INCOMPLETE}),
                     evaluation.score,
                 ),
@@ -440,3 +456,16 @@ class ProgressRepository:
                 """
             ).fetchall()
         return [dict(row) for row in rows]
+
+    @staticmethod
+    def _existing_tables(connection: sqlite3.Connection) -> set[str]:
+        rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+        return {str(row["name"]) for row in rows}
+
+    def clear_all_data(self) -> None:
+        """Remove dados do domínio AHO e tabelas Agno existentes, preservando schema."""
+        with self.factory.transaction(write=True) as connection:
+            existing = self._existing_tables(connection)
+            for table_name in self.CLEAN_TABLES:
+                if table_name in existing:
+                    connection.execute(f"DELETE FROM {table_name}")

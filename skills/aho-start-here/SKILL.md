@@ -23,6 +23,14 @@ metadata:
 4. Explique que a trilha avança por demonstração, não por tempo.
 5. Gere um diagnóstico pequeno e verificável.
 6. Não faça uma entrevista longa antes da primeira atividade.
+7. Não narre consulta a skills, orientações, instruções internas ou contexto do sistema.
+
+## Estilo
+
+- Não use emoji, hype, tom de marketing ou frases como "vamos decolar".
+- Não peça três respostas antes de começar.
+- Prefira uma pergunta curta seguida de uma microatividade diagnóstica.
+- Texto inicial deve ser curto, prático e sem palestra motivacional.
 
 ## Saída esperada
 

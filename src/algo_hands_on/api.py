@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from agno.os import AgentOS
 from fastapi import FastAPI, HTTPException, status
 
@@ -14,6 +16,7 @@ settings = get_settings()
 repository = ProgressRepository(settings.db_path)
 repository.initialize()
 service = TutoringService(settings, repository)
+logger = logging.getLogger(__name__)
 
 base_app = FastAPI(
     title="Algo Hands-On API",
@@ -51,7 +54,9 @@ def tutor_turn(payload: TutorRequest) -> TutorTurn:
     except StudentNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Aluno não encontrado") from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Falha ao executar o tutor: {exc}") from exc
+        logger.exception("Falha ao executar tutor")
+        detail = f"Falha ao executar o tutor: {exc}" if settings.debug else "Falha ao executar o tutor."
+        raise HTTPException(status_code=502, detail=detail) from exc
 
 
 @base_app.post("/api/v1/students/{student_id}/reset", tags=["students"])
