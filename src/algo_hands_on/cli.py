@@ -205,6 +205,8 @@ def _turn_history_text(turn: TutorTurn) -> str:
 class ChatApp(App[None]):
     """TUI do chat com RichLog, status e input."""
 
+    _history_text: str = ""
+
     CSS = """
     #status {
         dock: top;
@@ -256,7 +258,6 @@ class ChatApp(App[None]):
         self.snapshot = snapshot
         self.pending_skip_module: int | None = None
         self._streaming = False
-        self._history_text = ""
 
     def compose(self) -> ComposeResult:
         yield Static(self._status_text(), id="status")
@@ -847,6 +848,42 @@ def skip_module(
 
     repository.set_current_module(student_id, module_id, reason="skip_module_command")
     console.print(f"[green]Aluno movido para o módulo {module_id} ({target.title}).[/green]")
+
+
+@app.command()
+def clean() -> None:
+    """Limpa TODO o banco de dados — alunos, progresso, memórias. Requer confirmação."""
+    settings, repository = runtime()
+
+    students = repository.list_students()
+    if not students:
+        console.print("[dim]Banco já está vazio.[/dim]")
+        return
+
+    console.print(f"[yellow]ATENÇÃO: {len(students)} aluno(s) e todos os dados serão PERDIDOS.[/yellow]")
+    for s in students:
+        console.print(f"  • {s['student_id']} ({s['display_name']})")
+
+    if not typer.confirm("Confirmar limpeza total do banco?"):
+        raise typer.Abort()
+
+    import sqlite3
+
+    conn = sqlite3.connect(str(settings.db_path))
+    conn.execute("DELETE FROM aho_exercise_attempts")
+    conn.execute("DELETE FROM aho_module_evidence")
+    conn.execute("DELETE FROM aho_competency_progress")
+    conn.execute("DELETE FROM aho_learning_events")
+    conn.execute("DELETE FROM aho_module_progress")
+    conn.execute("DELETE FROM aho_student_progress")
+    conn.execute("DELETE FROM aho_students")
+    conn.execute("DELETE FROM agno_sessions")
+    conn.execute("DELETE FROM agno_memories")
+    conn.execute("DELETE FROM agno_metrics")
+    conn.execute("DELETE FROM agno_evals")
+    conn.commit()
+    conn.close()
+    console.print("[green]Banco limpo. Pronto para começar do zero.[/green]")
 
 
 @app.command()
