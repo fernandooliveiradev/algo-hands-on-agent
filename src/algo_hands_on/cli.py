@@ -13,7 +13,7 @@ from rich.console import Console
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, Static, TextArea
 
 from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
@@ -206,12 +206,9 @@ class ChatApp(App[None]):
     """TUI do chat com RichLog, status e input."""
 
     CSS = """
-    Screen {
-        layout: vertical;
-    }
-
     #status {
         dock: top;
+        width: 100%;
         height: auto;
         max-height: 5;
         padding: 1 2;
@@ -219,12 +216,14 @@ class ChatApp(App[None]):
     }
 
     #history {
+        width: 100%;
         height: 1fr;
-        padding: 1 2;
+        padding: 0 2;
     }
 
     #message {
         dock: bottom;
+        width: 100%;
         height: 3;
         padding: 0 2;
         border-top: solid #1748E8;
@@ -260,23 +259,23 @@ class ChatApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Static(self._status_text(), id="status")
-        yield RichLog(
+        yield TextArea(
+            "",
             id="history",
-            highlight=True,
-            markup=True,
-            wrap=True,
-            auto_scroll=True,
+            read_only=True,
+            soft_wrap=True,
+            show_line_numbers=False,
         )
         yield Input(id="message", placeholder="Digite sua mensagem ou /comando...")
 
     def on_mount(self) -> None:
-        self._history.write("[bold]Bem-vindo ao Algo Hands-On![/]")
-        self._history.write("Digite [bold]/ajuda[/] para ver os comandos.")
+        self._append("Bem-vindo ao Algo Hands-On!")
+        self._append("Digite /ajuda para ver os comandos.")
         self._message.focus()
 
     @property
-    def _history(self) -> RichLog:
-        return self.query_one("#history", RichLog)
+    def _history(self) -> TextArea:
+        return self.query_one("#history", TextArea)
 
     @property
     def _message(self) -> Input:
@@ -287,8 +286,9 @@ class ChatApp(App[None]):
         return self.query_one("#status", Static)
 
     def action_clear_history(self) -> None:
-        self._history.clear()
-        self._write_system("[dim]Tela limpa. O progresso permanece salvo.[/dim]")
+        self._history_text = ""
+        self._history.load_text("")
+        self._append("Tela limpa. Progresso salvo.")
 
     def _status_text(self) -> str:
         current = self.snapshot["current"]
@@ -319,48 +319,40 @@ class ChatApp(App[None]):
         self.snapshot = self.repository.get_progress_snapshot(self.student_id)
         self._status.update(self._status_text())
 
-    # ── escrita no RichLog ────────────────────────────────────────────────
+    # ── escrita ──────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _safe(text: str) -> str:
-        """Escapa colchetes para não serem interpretados como markup pelo RichLog."""
-        return text.replace("[", "\\[")
+    def _append(self, text: str) -> None:
+        self._history_text += text
+        self._history.load_text(self._history_text)
+        self._history.scroll_end(animate=False)
 
     def _write_user(self, message: str) -> None:
-        self._history.write(f"\n[bold #58a6ff]Você:[/] {self._safe(message)}")
+        self._append(f"\nVoce: {message}")
 
     def _write_system(self, message: str) -> None:
-        self._history.write(f"\n[dim italic]{message}[/]")
+        self._append(f"\n{message}")
 
-    def _write_assistant_block(self, text: str) -> None:
-        self._history.write("\n[bold #7ee787]Algo Hands-On:[/]")
-        self._history.write(self._safe(text))
+    def _start_assistant(self) -> None:
+        self._append("\nAlgo Hands-On: ")
 
-    def _write_streaming_header(self) -> None:
-        self._history.write("\n[bold #7ee787]Algo Hands-On:[/] ")
-
-    def _append_streaming_text(self, text: str) -> None:
-        self._history.write(self._safe(text))
+    def _append_text(self, text: str) -> None:
+        self._append(text)
 
     def _write_exercise(self, turn: TutorTurn) -> None:
         if not turn.exercise:
             return
         ex = turn.exercise
-        constraints = "\n".join(f"  • {c}" for c in ex.constraints) if ex.constraints else ""
-        self._history.write(
-            f"\n[yellow]▸ {self._safe(ex.title)}[/]\n{self._safe(ex.statement)}"
-            + (f"\n\n[dim]Regras:[/]\n{constraints}" if constraints else "")
-        )
+        text = f"\nExercicio: {ex.title}\n{ex.statement}"
+        if ex.constraints:
+            text += "\n\nRegras:\n" + "\n".join(f"  - {c}" for c in ex.constraints)
+        self._append(text)
 
     def _write_evaluation(self, turn: TutorTurn) -> None:
         if not turn.evaluation:
             return
         ev = turn.evaluation
-        icon = "✓" if ev.result.value == "correct" else ("⚠" if ev.result.value == "correct_with_hint" else "✗")
-        color = "green" if ev.result.value == "correct" else ("yellow" if ev.result.value == "correct_with_hint" else "red")
-        self._history.write(
-            f"\n[bold {color}]{icon} {ev.result.value}[/]  "
-            f"[dim]nota {ev.score:.0%}  competência {ev.competency_key}[/]"
+        self._append(
+            f"\n{ev.result.value} | nota {ev.score:.0%} | {ev.competency_key}"
         )
 
     # ── processamento de mensagens ────────────────────────────────────────
@@ -477,8 +469,8 @@ class ChatApp(App[None]):
                     if event_type == "content":
                         if not self._streaming:
                             self._streaming = True
-                            self.call_from_thread(self._write_streaming_header)
-                        self.call_from_thread(self._append_streaming_text, event["text"])
+                            self.call_from_thread(self._start_assistant)
+                        self.call_from_thread(self._append_text, event["text"])
                     elif event_type == "parsing":
                         pass  # evento interno, não exibe
                     elif event_type == "warning":
@@ -504,7 +496,7 @@ class ChatApp(App[None]):
 
     def _finish_agent_turn(self, turn: TutorTurn) -> None:
         if not self._streaming:
-            self._write_assistant_block(turn.message_markdown)
+            self._append(f"\nAlgo Hands-On: {turn.message_markdown}")
         self._write_exercise(turn)
         self._write_evaluation(turn)
         self._refresh_status()
