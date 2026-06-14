@@ -61,7 +61,7 @@ uv run aho chat --student-id maria --session-id cli-maria-a1b2c3d4e5
 ```
 
 ### `aho progress`
-Mostra a progressão curricular completa em tabela.
+Mostra a progressão curricular completa.
 
 ```bash
 uv run aho progress --student-id maria
@@ -122,7 +122,7 @@ Ao executar `aho chat`, você entra em uma conversa interativa com o tutor. A te
 
 | Comando | Descrição |
 |---------|-----------|
-| `/progresso` | Tabela completa com todos os módulos, estados e percentuais |
+| `/progresso` | Lista completa com todos os módulos, estados e percentuais |
 | `/checkpoint` | Evidências do módulo atual com notas e status (✓/✗) |
 | `/modulos` | Lista os 17 módulos da trilha |
 | `/historico` | Últimas 10 tentativas com resultado, nota, e data |
@@ -146,25 +146,7 @@ Ao executar `aho chat`, você entra em uma conversa interativa com o tutor. A te
 
 ## Tela inicial
 
-Ao abrir o chat, você vê:
-
-```
-╭─────────────────────────────────────────╮
-│         ALGO HANDS-ON                   │
-│      Pense. Resolva. Construa.          │
-╰─────────────────────────────────────────╯
-
-Aluno:        Maria Silva
-Sessão:       cli-maria-a1b2c3d4e5
-Módulo atual: Fundamentos de Python
-Nível:        Guiado
-Competência:  variáveis
-
-Domínio   ████████░░░░░░░░░░░░░░░░░░░░░░  25%
-
-Checkpoint:  ✗ Aplicação direta  ✗ Aplicação independente
-             ✗ Integração  ✗ Diagnóstico  ✗ Explicação/transferência
-```
+Ao abrir o chat, você vê um cabeçalho fixo com aluno, sessão, módulo atual, nível de independência, competência, domínio e checkpoint. O histórico fica no centro da tela e a entrada permanece fixa no rodapé.
 
 - **Barra de domínio**: progresso percentual do módulo atual baseado nas 5 evidências.
 - **Checkpoint**: mostra quais evidências foram satisfeitas (✓ verde) ou não (✗ vermelho).
@@ -225,12 +207,12 @@ Após o primeiro `uv sync`, você pode iniciar sem verificar dependências:
 
 ```bash
 # Opção 1: pular sincronização
-uv run --no-sync aho chat --student-id fernando --session-id estudo-principal
+uv run --no-sync aho chat --student-id <seu-id> --session-id estudo-principal
 
 # Opção 2: ativar o ambiente virtual
 .venv\Scripts\Activate.ps1   # Windows PowerShell
 source .venv/bin/activate    # Linux/macOS
-aho chat --student-id fernando
+aho chat --student-id <seu-id>
 ```
 
 ## Configuração avançada
@@ -247,7 +229,6 @@ Todas as variáveis de ambiente em `.env`:
 | `AHO_SESSION_SUMMARIES` | `true` | Resumos automáticos de conversas longas |
 | `AHO_MEMORY` | `true` | Memória de preferências do aluno |
 | `AHO_STREAM` | `true` | Streaming de resposta |
-| `AHO_STREAM_EVENTS` | `true` | Eventos de streaming |
 | `AHO_DEBUG` | `false` | Logs detalhados (ativo = mais verboso) |
 | `AHO_HOST` | `127.0.0.1` | Host da API |
 | `AHO_PORT` | `7777` | Porta da API |
@@ -290,5 +271,5 @@ Verifique se o diretório `skills/` existe e contém as 9 subpastas de skills.
 AHO_DEBUG=true
 
 # Ou na linha de comando (PowerShell)
-$env:AHO_DEBUG="true"; uv run aho chat --student-id fernando
+$env:AHO_DEBUG="true"; uv run aho chat --student-id <seu-id>
 ```

@@ -32,6 +32,7 @@ app = typer.Typer(
 console = Console()
 
 UNDEFINED_COMPETENCY = "não definida"
+BRAND_ACCENT = "#1748E8"
 
 INDEPENDENCE_LABELS: dict[str, str] = {
     "observer": "Observador",
@@ -220,6 +221,9 @@ class ChatApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
 
     CSS = """
+    $brand: #1748E8;
+    $brand-dark: #07133f;
+
     Screen {
         layout: vertical;
         background: #050505;
@@ -230,7 +234,7 @@ class ChatApp(App[None]):
         height: auto;
         max-height: 9;
         padding: 1 2;
-        border: solid #0284c7;
+        border: solid $brand;
         background: #080808;
     }
 
@@ -246,9 +250,9 @@ class ChatApp(App[None]):
         dock: bottom;
         height: 5;
         min-height: 5;
-        border: solid #0ea5e9;
+        border: solid $brand;
         padding: 1 2;
-        background: #020617;
+        background: $brand-dark;
         color: #f8fafc;
     }
     """
@@ -332,13 +336,15 @@ class ChatApp(App[None]):
             for kind, label in EVIDENCE_DISPLAY_LABELS.items()
         )
         return (
-            "[bold cyan]ALGO HANDS-ON[/bold cyan]  Pense. Resolva. Construa.\n"
-            f"[cyan]Aluno[/cyan] {self.student['display_name']}   "
-            f"[cyan]Sessão[/cyan] {self.session_id}\n"
-            f"[cyan]Módulo[/cyan] {current['module_title']}   "
-            f"[cyan]Nível[/cyan] {INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}   "
-            f"[cyan]Competência[/cyan] {current.get('current_competency') or UNDEFINED_COMPETENCY}   "
-            f"[cyan]Domínio[/cyan] {module_progress.get('mastery_score', 0.0) * 100:.0f}%\n"
+            f"[bold {BRAND_ACCENT}]ALGO HANDS-ON[/]  Pense. Resolva. Construa.\n"
+            f"[{BRAND_ACCENT}]Aluno[/{BRAND_ACCENT}] {self.student['display_name']}   "
+            f"[{BRAND_ACCENT}]Sessão[/{BRAND_ACCENT}] {self.session_id}\n"
+            f"[{BRAND_ACCENT}]Módulo[/{BRAND_ACCENT}] {current['module_title']}   "
+            f"[{BRAND_ACCENT}]Nível[/{BRAND_ACCENT}] "
+            f"{INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}   "
+            f"[{BRAND_ACCENT}]Competência[/{BRAND_ACCENT}] "
+            f"{current.get('current_competency') or UNDEFINED_COMPETENCY}   "
+            f"[{BRAND_ACCENT}]Domínio[/{BRAND_ACCENT}] {module_progress.get('mastery_score', 0.0) * 100:.0f}%\n"
             f"[bold]Checkpoint:[/bold] {checkpoint}"
         )
 
@@ -483,15 +489,19 @@ class ChatApp(App[None]):
                     session_id=self.session_id,
                     message=final_message,
                 ):
-                    if event["type"] == "content":
+                    event_type = event.get("type")
+                    if event_type in {"content", "parsing"}:
                         self.call_from_thread(self._append_assistant_delta, event["text"])
-                    elif event["type"] == "final":
+                    elif event_type == "warning":
+                        self.call_from_thread(self._append_assistant_delta, f"\n[Aviso: {event['text']}]")
+                    elif event_type == "final":
                         final_turn = event["turn"]
                 if final_turn is None:
-                    msg = "Streaming terminou sem turno final validado."
+                    msg = "Streaming terminou sem turno final validado. Tente novamente."
                     raise RuntimeError(msg)
                 turn = final_turn
             else:
+                self.call_from_thread(self._append_assistant_delta, "Processando...")
                 turn = self.service.run_turn(
                     student_id=self.student_id,
                     session_id=self.session_id,
@@ -726,7 +736,7 @@ def doctor() -> None:
     except Exception as exc:
         rows.append(("Validação Agno Skills", False, str(exc)))
 
-    rows.append(("Streaming", True, "ativado" if settings.stream else "desativado"))
+    rows.append(("Streaming Agno", True, "ativado" if settings.stream else "desativado"))
     rows.append(("Resumos", True, "ativado" if settings.session_summaries else "desativado"))
     rows.append(("Memória", True, "ativada" if settings.memory else "desativada"))
 

@@ -4,7 +4,7 @@ from collections.abc import Generator
 
 from agno.agent import Agent
 
-from algo_hands_on.agent_factory import build_agent
+from algo_hands_on.agent_factory import build_agent, build_parser_agent
 from algo_hands_on.config import Settings
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
 from algo_hands_on.schemas import TutorTurn
@@ -17,6 +17,7 @@ class TutoringService:
         self.settings = settings
         self.repository = repository
         self.agent: Agent = build_agent(settings)
+        self.parser_agent: Agent = build_parser_agent(settings)
 
     def ensure_student(self, student_id: str, display_name: str | None = None) -> None:
         try:
@@ -38,7 +39,9 @@ class TutoringService:
 
     def _guard_module_id(self, turn: TutorTurn, snapshot: dict) -> TutorTurn:
         current_module = snapshot["current"]["current_module"]
-        if turn.module_id not in {current_module, max(0, current_module - 1)}:
+        # Permite referenciar até 2 módulos anteriores para remediação, mas nunca futuros
+        allowed = {current_module, max(0, current_module - 1), max(0, current_module - 2)}
+        if turn.module_id not in allowed:
             turn.module_id = current_module
             if turn.evaluation:
                 turn.evaluation.module_id = current_module
@@ -68,6 +71,45 @@ class TutoringService:
             },
         )
 
+    @staticmethod
+    def _turn_from_content(content: object) -> TutorTurn | None:
+        if isinstance(content, TutorTurn):
+            return content
+        if isinstance(content, dict):
+            return TutorTurn.model_validate(content)
+        return None
+
+    def _parse_turn(
+        self,
+        *,
+        student_id: str,
+        session_id: str,
+        message: str,
+        tutor_text: str,
+        snapshot: dict,
+    ) -> TutorTurn:
+        parser_input = (
+            "Mensagem do aluno:\n"
+            f"{message}\n\n"
+            "Resposta do tutor:\n"
+            f"{tutor_text}"
+        )
+        run = self.parser_agent.run(
+            parser_input,
+            user_id=student_id,
+            session_id=f"{session_id}:parser",
+            dependencies=self._build_dependencies(student_id),
+            add_dependencies_to_context=True,
+        )
+        turn = self._turn_from_content(run.content)
+        if turn is None:
+            msg = "Agno parser não retornou TutorTurn estruturado."
+            raise RuntimeError(msg)
+        turn.message_markdown = tutor_text
+        if not turn.module_id:
+            turn.module_id = snapshot["current"]["current_module"]
+        return turn
+
     def _finalize_turn(self, turn: TutorTurn, student_id: str, session_id: str, snapshot: dict, run_id: str) -> TutorTurn:
         turn = self._guard_module_id(turn, snapshot)
         self._persist_evaluation(turn, student_id, session_id)
@@ -85,8 +127,14 @@ class TutoringService:
             dependencies=self._build_dependencies(student_id),
             add_dependencies_to_context=True,
         )
-        content = run.content
-        turn = content if isinstance(content, TutorTurn) else TutorTurn.model_validate(content)
+        tutor_text = str(run.content or "").strip()
+        turn = self._parse_turn(
+            student_id=student_id,
+            session_id=session_id,
+            message=message,
+            tutor_text=tutor_text,
+            snapshot=snapshot,
+        )
         return self._finalize_turn(turn, student_id, session_id, snapshot, str(run.run_id))
 
     def run_turn_stream(
@@ -102,113 +150,61 @@ class TutoringService:
             dependencies=self._build_dependencies(student_id),
             add_dependencies_to_context=True,
             stream=True,
-            stream_events=self.settings.stream_events,
+            stream_events=True,
+            yield_run_output=True,
         )
 
         run_id = "unknown"
-        json_chunks: list[str] = []
-        turn_from_object: TutorTurn | None = None
-        last_displayed_len = 0
+        text_chunks: list[str] = []
+        final_text = ""
+        saw_run_response_event = False
 
         for chunk in run_stream:
             if hasattr(chunk, "run_id") and chunk.run_id:
                 run_id = str(chunk.run_id)
 
-            event_type = getattr(chunk, "event", None)
-            is_tool_event = False
-            if event_type is not None:
-                event_name = getattr(event_type, "__name__", "") if hasattr(event_type, "__name__") else str(event_type)
-                is_tool_event = "Tool" in event_name or "tool" in event_name
-
+            event_name = str(getattr(chunk, "event", ""))
             chunk_content = getattr(chunk, "content", None)
-            if chunk_content is None:
+
+            # Agno emite conteúdo de streaming em eventos RunContent / RunIntermediateContent / RunResponse
+            if event_name in {"RunContent", "RunIntermediateContent", "RunResponse"} and isinstance(chunk_content, str):
+                saw_run_response_event = True
+                text_chunks.append(chunk_content)
+                yield {"type": "content", "text": chunk_content}
                 continue
 
-            if isinstance(chunk_content, TutorTurn):
-                turn_from_object = chunk_content
-                continue
+            # Fallback: último chunk com texto final (RunCompleted, etc.)
+            if isinstance(chunk_content, str) and not saw_run_response_event:
+                final_text = chunk_content
 
-            if isinstance(chunk_content, str):
-                if is_tool_event:
-                    continue
-                json_chunks.append(chunk_content)
-                # Extrai message_markdown parcial para streaming visual
-                display_text = self._extract_partial_markdown("".join(json_chunks))
-                if display_text and len(display_text) > last_displayed_len:
-                    delta = display_text[last_displayed_len:]
-                    last_displayed_len = len(display_text)
-                    yield {"type": "content", "text": delta}
-            else:
-                json_chunks.append(str(chunk_content))
+        tutor_text = ("".join(text_chunks) or final_text).strip()
+        if not tutor_text:
+            msg = (
+                "Agno não retornou texto ao finalizar o streaming. "
+                "Verifique a chave da API DeepSeek e a conectividade."
+            )
+            raise RuntimeError(msg)
 
-        # Prioridade: objeto TutorTurn > parse do JSON acumulado > fallback
-        if turn_from_object is not None:
-            turn = turn_from_object
-        else:
-            combined = "".join(json_chunks).strip()
-            turn = self._parse_stream_content(combined, snapshot)
+        # Sinaliza ao frontend que terminou o streaming e vai estruturar
+        yield {"type": "parsing", "text": "\n\nProcessando resposta..."}
+
+        try:
+            turn = self._parse_turn(
+                student_id=student_id,
+                session_id=session_id,
+                message=message,
+                tutor_text=tutor_text,
+                snapshot=snapshot,
+            )
+        except Exception as parse_exc:
+            # Fallback: cria um turn mínimo com o texto bruto como mensagem
+            from algo_hands_on.schemas import TutorTurn
+
+            turn = TutorTurn(
+                message_markdown=tutor_text,
+                module_id=snapshot["current"]["current_module"],
+            )
+            yield {"type": "warning", "text": f"Parser indisponível: {parse_exc}"}
 
         turn = self._finalize_turn(turn, student_id, session_id, snapshot, run_id)
         yield {"type": "final", "turn": turn}
-
-    @staticmethod
-    def _extract_partial_markdown(text: str) -> str:
-        """Extrai message_markdown parcial de JSON incompleto via estado."""
-        key = '"message_markdown": "'
-        idx = text.find(key)
-        if idx == -1:
-            return ""
-        start = idx + len(key)
-        result: list[str] = []
-        i = start
-        escaped = False
-        while i < len(text):
-            ch = text[i]
-            if escaped:
-                result.append(ch)
-                escaped = False
-                i += 1
-                continue
-            if ch == "\\":
-                result.append(ch)
-                escaped = True
-                i += 1
-                continue
-            if ch == '"':
-                break
-            result.append(ch)
-            i += 1
-        raw = "".join(result)
-        # Decodifica escapes JSON parciais
-        raw = raw.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
-        raw = raw.replace('\\"', '"').replace("\\\\", "\\")
-        return raw
-
-    @staticmethod
-    def _parse_stream_content(combined: str, snapshot: dict) -> TutorTurn:
-        if not combined:
-            return TutorTurn(message_markdown="Sem resposta.",
-                             module_id=snapshot["current"]["current_module"])
-        # Tenta cada chunk individualmente (do ultimo para o primeiro)
-        json_attempts: list[str] = []
-        brace_depth = 0
-        start = -1
-        for i, ch in enumerate(combined):
-            if ch == "{":
-                if brace_depth == 0:
-                    start = i
-                brace_depth += 1
-            elif ch == "}":
-                brace_depth -= 1
-                if brace_depth == 0 and start >= 0:
-                    json_attempts.append(combined[start:i + 1])
-                    start = -1
-        # Tenta parsear cada bloco JSON, do ultimo para o primeiro
-        for candidate in reversed(json_attempts):
-            try:
-                return TutorTurn.model_validate_json(candidate)
-            except Exception:
-                continue
-        # Fallback: usa o texto combinado como markdown
-        return TutorTurn(message_markdown=combined or "Sem resposta.",
-                         module_id=snapshot["current"]["current_module"])

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
@@ -33,7 +34,6 @@ class Settings(BaseSettings):
     session_summaries: bool = Field(default=True, alias="AHO_SESSION_SUMMARIES")
     memory: bool = Field(default=True, alias="AHO_MEMORY")
     stream: bool = Field(default=True, alias="AHO_STREAM")
-    stream_events: bool = Field(default=True, alias="AHO_STREAM_EVENTS")
     debug: bool = Field(default=False, alias="AHO_DEBUG")
     telemetry: bool = Field(default=False, alias="AHO_TELEMETRY")
     log_level: str = Field(default="INFO", alias="AHO_LOG_LEVEL")

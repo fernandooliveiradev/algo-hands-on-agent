@@ -21,6 +21,7 @@ Consulte o progresso recebido nas dependências e `TRILHA-AHO.md`.
 4. Na dúvida, escolha o pré-requisito mais próximo.
 5. Carregue somente a skill de domínio necessária, além das skills transversais.
 6. Nunca declare módulo concluído; a aplicação calcula as cinco evidências.
+7. RESPEITE a fronteira entre módulos: Módulo 1 não usa algoritmos; Módulo 2 não usa Python; Python só a partir do Módulo 3.
 
 ## Decisão interna
 

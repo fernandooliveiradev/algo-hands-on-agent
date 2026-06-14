@@ -1,0 +1,15 @@
+# Força LF como fim de linha padrão para todos os arquivos de texto
+* text=auto eol=lf
+
+# Arquivos que NUNCA devem ter fim de linha convertido
+*.db binary
+*.db-shm binary
+*.db-wal binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary

@@ -10,5 +10,4 @@ def test_defaults_match_prd() -> None:
     assert settings.session_summaries is True
     assert settings.memory is True
     assert settings.stream is True
-    assert settings.stream_events is True
     assert settings.debug is False

@@ -17,7 +17,7 @@ def pre_run_context(**kwargs: Any) -> None:
 
 def post_run_validate(**kwargs: Any) -> None:
     """Post-hook: valida o TutorTurn e audita desvios na resposta."""
-    content = kwargs.get("content") or kwargs.get("run_response")
+    content = kwargs.get("content") or kwargs.get("run_output") or kwargs.get("run_response")
     if content is None:
         logger.warning("Post-run | resposta vazia")
         return

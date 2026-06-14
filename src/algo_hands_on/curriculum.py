@@ -20,7 +20,7 @@ MODULES: tuple[Module, ...] = (
     Module(1, "pensamento-computacional", "Pensamento computacional", "aho-computational-thinking", (
         "analise", "decomposicao", "reconhecimento-de-padroes", "abstracao", "generalizacao", "avaliacao-de-solucoes",
     )),
-    Module(2, "representacao-de-algoritmos", "Construção e representação de algoritmos", "aho-computational-thinking", (
+    Module(2, "representacao-de-algoritmos", "Construção e representação de algoritmos", "aho-algorithm-representation", (
         "entrada-processamento-saida", "regras-restricoes", "algoritmo-natural", "pseudocodigo", "fluxograma", "teste-de-mesa",
     )),
     Module(3, "fundamentos-python", "Fundamentos de Python", "aho-python-foundations", (

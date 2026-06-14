@@ -9,7 +9,7 @@ Tutor adaptativo de pensamento computacional, lógica de programação, algoritm
 - **Agno `SqliteDb`**: sessões, memória, resumos e metadados de execução do agente.
 - **Tabelas `aho_*`**: progresso curricular, competências, tentativas e evidências (fonte de verdade pedagógica).
 - **Skills Agno**: comportamento pedagógico carregado sob demanda.
-- **Saída Pydantic**: contrato validado entre o LLM e a aplicação (JSON mode).
+- **Saída Pydantic**: contrato validado entre o LLM e a aplicação; no chat com streaming, um agente parser interno estrutura o turno após o tutor transmitir a resposta ao aluno.
 - **Serviço de progresso**: única camada autorizada a alterar domínio e avanço.
 - **CLI**: interface interativa com streaming, tela inicial com barra de progresso e checkpoints.
 - **API + AgentOS**: integração HTTP e endpoints nativos do Agno.
@@ -41,25 +41,25 @@ uv run aho doctor
 
 ```bash
 # criar aluno
-uv run aho setup --student-id fernando --name "Fernando"
+uv run aho setup --student-id <seu-id> --name "<seu-nome>"
 
 # abrir o tutor interativo
-uv run aho chat --student-id fernando
+uv run aho chat --student-id <seu-id>
 
 # consultar progresso
-uv run aho progress --student-id fernando
+uv run aho progress --student-id <seu-id>
 
 # continuar uma sessão anterior
-uv run aho chat --student-id fernando --session-id cli-fernando-abc123
+uv run aho chat --student-id <seu-id> --session-id cli-<seu-id>-abc123
 
 # pular módulo (requer confirmação)
-uv run aho skip-module --student-id fernando --module 3
+uv run aho skip-module --student-id <seu-id> --module 3
 
 # exportar histórico completo
-uv run aho export --student-id fernando --output progress-export-fernando.json
+uv run aho export --student-id <seu-id> --output progress-export-<seu-id>.json
 
 # reiniciar progresso (requer confirmação)
-uv run aho reset --student-id fernando
+uv run aho reset --student-id <seu-id>
 ```
 
 ## Comandos dentro do chat
@@ -90,6 +90,7 @@ Veja [HELP.md](HELP.md) para um guia detalhado de uso.
 
 - As respostas do tutor aparecem **progressivamente** no terminal (streaming).
 - A tela inicial mostra módulo atual, nível de independência, barra de domínio e as 5 evidências do checkpoint.
+- A interface usa a cor de marca `#1748E8`. Para aproximar a tipografia da marca, configure o perfil do terminal com Encode Sans ou a fonte da sua preferência.
 - Eventos internos são traduzidos em feedback curto; logs detalhados exigem `AHO_DEBUG=true`.
 - Ações destrutivas (reset, skip, pular) exigem **confirmação explícita**.
 
@@ -119,7 +120,7 @@ O AgentOS registra endpoints nativos adicionais para o agente.
 curl -X POST http://127.0.0.1:7777/api/v1/tutor/turn \
   -H "Content-Type: application/json" \
   -d '{
-    "student_id": "fernando",
+    "student_id": "<seu-id>",
     "session_id": "estudo-001",
     "message": "Quero começar do zero"
   }'
@@ -128,6 +129,8 @@ curl -X POST http://127.0.0.1:7777/api/v1/tutor/turn \
 ## Progresso pedagógico
 
 O banco SQLite usa transações, WAL, chaves estrangeiras e migrações idempotentes.
+
+Arquivos locais de banco e histórico ficam fora do GitHub por padrão: `.gitignore` bloqueia `data/*`, `*.db`, `*.db-wal`, `*.db-shm`, exports de progresso/sessão/chat, logs e caches. Apenas `data/.gitkeep` é versionado para manter a pasta no projeto.
 
 Tabelas do domínio pedagógico (`aho_*`):
 
@@ -165,7 +168,6 @@ Acertos com dica são registrados mas **não** concluem a evidência.
 | `AHO_SESSION_SUMMARIES` | `true` | Resumos automáticos de sessão |
 | `AHO_MEMORY` | `true` | Memória de preferências do aluno |
 | `AHO_STREAM` | `true` | Streaming de resposta |
-| `AHO_STREAM_EVENTS` | `true` | Eventos de streaming |
 | `AHO_DEBUG` | `false` | Logs detalhados |
 | `AHO_HOST` | `127.0.0.1` | Host da API |
 | `AHO_PORT` | `7777` | Porta da API |

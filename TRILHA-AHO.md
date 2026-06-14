@@ -245,7 +245,7 @@ O aluno deve conseguir representar e rastrear uma solução simples sem depender
 ### Roteamento
 
 ```text
-aho-computational-thinking
+aho-algorithm-representation
 aho-tutor-core
 aho-guided-lessons
 ```
