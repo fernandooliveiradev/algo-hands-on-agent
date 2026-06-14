@@ -13,7 +13,7 @@ from rich.console import Console
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Header, Input, RichLog, Static
+from textual.widgets import Input, RichLog, Static
 
 from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
@@ -206,55 +206,28 @@ class ChatApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
 
     CSS = """
-    $brand: #1748E8;
-    $brand-dark: #0a1a3f;
-    $surface: #0d1117;
-    $text: #e6edf3;
-    $muted: #8b949e;
-
     Screen {
         layout: vertical;
-        background: $surface;
-    }
-
-    Header {
-        background: $brand-dark;
-        color: $text;
     }
 
     #status {
-        width: 100%;
+        dock: top;
         height: auto;
         max-height: 5;
         padding: 1 2;
-        border-bottom: solid $brand;
-        background: #0a0e14;
-        color: $text;
+        border-bottom: solid #1748E8;
     }
 
     #history {
-        width: 100%;
         height: 1fr;
-        min-height: 6;
-        border: none;
-        padding: 1 3;
-        background: $surface;
-        color: $text;
+        padding: 1 2;
     }
 
     #message {
-        width: 100%;
-        height: auto;
-        min-height: 3;
-        max-height: 3;
-        border-top: solid $brand;
-        padding: 0 3;
-        background: $brand-dark;
-        color: $text;
-    }
-
-    #message > .input--placeholder {
-        color: $muted;
+        dock: bottom;
+        height: 3;
+        padding: 0 2;
+        border-top: solid #1748E8;
     }
     """
 
@@ -286,7 +259,6 @@ class ChatApp(App[None]):
         self._streaming = False
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
         yield Static(self._status_text(), id="status")
         yield RichLog(
             id="history",
@@ -298,7 +270,8 @@ class ChatApp(App[None]):
         yield Input(id="message", placeholder="Digite sua mensagem ou /comando...")
 
     def on_mount(self) -> None:
-        self._write_system("[bold]Bem-vindo ao Algo Hands-On![/]\nDigite [bold]/ajuda[/] para ver os comandos disponíveis.")
+        self._history.write("[bold]Bem-vindo ao Algo Hands-On![/]")
+        self._history.write("Digite [bold]/ajuda[/] para ver os comandos.")
         self._message.focus()
 
     @property
@@ -362,20 +335,19 @@ class ChatApp(App[None]):
         self._history.write("\n[bold #7ee787]Algo Hands-On:[/] ")
 
     def _append_streaming_text(self, text: str) -> None:
-        self._history.write(text, animate=False)
+        self._history.write(text)
 
-    def _write_exercise_card(self, turn: TutorTurn) -> None:
+    def _write_exercise(self, turn: TutorTurn) -> None:
         if not turn.exercise:
             return
         ex = turn.exercise
-        constraints = "\n".join(f"• {c}" for c in ex.constraints) if ex.constraints else ""
+        constraints = "\n".join(f"  • {c}" for c in ex.constraints) if ex.constraints else ""
         self._history.write(
-            f"\n[bold yellow]▸ Exercício: {ex.title}[/]\n"
-            f"{ex.statement}"
+            f"\n[yellow]▸ {ex.title}[/]\n{ex.statement}"
             + (f"\n\n[dim]Regras:[/]\n{constraints}" if constraints else "")
         )
 
-    def _write_evaluation_footer(self, turn: TutorTurn) -> None:
+    def _write_evaluation(self, turn: TutorTurn) -> None:
         if not turn.evaluation:
             return
         ev = turn.evaluation
@@ -526,8 +498,10 @@ class ChatApp(App[None]):
         self.call_from_thread(self._finish_agent_turn, turn)
 
     def _finish_agent_turn(self, turn: TutorTurn) -> None:
-        self._write_exercise_card(turn)
-        self._write_evaluation_footer(turn)
+        if not self._streaming:
+            self._write_assistant_block(turn.message_markdown)
+        self._write_exercise(turn)
+        self._write_evaluation(turn)
         self._refresh_status()
         self._message.disabled = False
         self._message.placeholder = "Digite sua mensagem ou /comando..."
