@@ -1,2 +1,0 @@
-[console_scripts]
-aho = algo_hands_on.cli:app

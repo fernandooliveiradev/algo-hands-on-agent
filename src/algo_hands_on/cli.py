@@ -5,13 +5,14 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, TextColumn
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
@@ -20,6 +21,7 @@ from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
 from algo_hands_on.curriculum import MODULES
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
+from algo_hands_on.schemas import EVIDENCE_DISPLAY_LABELS, TutorTurn
 from algo_hands_on.services.tutoring import TutoringService
 
 app = typer.Typer(
@@ -30,6 +32,61 @@ app = typer.Typer(
 )
 console = Console()
 
+INDEPENDENCE_LABELS: dict[str, str] = {
+    "observer": "Observador",
+    "guided": "Guiado",
+    "independent": "Independente",
+    "transfer": "Transferência",
+}
+
+COMMANDS_HELP: list[tuple[str, str]] = [
+    ("/progresso", "Progresso curricular"),
+    ("/checkpoint", "Evidências do módulo atual"),
+    ("/modulos", "Listar todos os módulos"),
+    ("/historico", "Últimas tentativas e eventos"),
+    ("/sessoes", "Listar/continuar sessões"),
+    ("/continuar", "Continuar no módulo atual"),
+    ("/revisar", "Revisar conteúdo anterior"),
+    ("/exercicio", "Solicitar novo exercício"),
+    ("/dica", "Pedir uma dica"),
+    ("/exemplo", "Pedir um exemplo"),
+    ("/config", "Ver preferências"),
+    ("/limpar", "Limpar a tela"),
+    ("/pular", "Avançar para próximo módulo"),
+    ("/sair", "Encerrar sessão"),
+]
+
+CONTEXTUAL_PREFIXES: dict[str, str] = {
+    "/continuar": "Quero continuar os estudos no módulo atual. Me guie no próximo passo.",
+    "/revisar": "Preciso revisar o conteúdo do módulo atual ou anterior. Me ajude a revisar.",
+    "/exercicio": "Me dê um novo exercício prático para resolver agora.",
+    "/dica": "Preciso de uma dica para resolver o exercício atual, sem revelar a resposta completa.",
+    "/exemplo": "Me mostre um exemplo prático relacionado ao conteúdo atual.",
+    "/checkpoint": "Quero fazer uma verificação de checkpoint (evidências) do módulo atual.",
+}
+
+
+# ── helpers de renderização ──────────────────────────────────────────────────
+
+def _panel(content: Any, title: str = "", border_style: str = "cyan", **kwargs: Any) -> None:
+    console.print(Panel(content, title=title, border_style=border_style, **kwargs))
+
+
+def _markdown_panel(text: str, title: str, border_style: str = "cyan") -> None:
+    console.print(Panel(Markdown(text), title=title, border_style=border_style))
+
+
+def _commands_panel(title: str = "Comandos", border_style: str = "cyan") -> None:
+    lines = [f"[cyan]{cmd}[/cyan]  {desc}" for cmd, desc in COMMANDS_HELP]
+    console.print(Panel("\n".join(lines), title=title, border_style=border_style, padding=(0, 2)))
+
+
+def _student_not_found() -> None:
+    console.print("[red]Aluno não encontrado.[/red]")
+    raise typer.Exit(1) from None
+
+
+# ── bootstrap ────────────────────────────────────────────────────────────────
 
 def runtime() -> tuple:
     settings = get_settings()
@@ -41,19 +98,60 @@ def runtime() -> tuple:
 def banner() -> None:
     title = Text("ALGO HANDS-ON", style="bold cyan")
     subtitle = Text("Pense. Resolva. Construa.", style="bright_white")
-    console.print(Panel.fit(Text.assemble(title, "\n", subtitle), border_style="cyan", padding=(1, 4)))
+    _panel(Text.assemble(title, "\n", subtitle), border_style="cyan", padding=(1, 4))
+
+
+# ── telas de informação ──────────────────────────────────────────────────────
+
+def render_home(snapshot: dict, student: dict, session_id: str) -> None:
+    current = snapshot["current"]
+    evidence = snapshot.get("evidence", [])
+    module_progress = next(
+        (m for m in snapshot["modules"] if m["module_id"] == current["current_module"]),
+        {"mastery_score": 0.0},
+    )
+    mastery_pct = module_progress.get("mastery_score", 0.0)
+
+    banner()
+    info_table = Table(box=None, show_header=False, padding=(0, 2))
+    info_table.add_column(style="bold cyan")
+    info_table.add_column()
+    info_table.add_row("Aluno", f"[bold]{student['display_name']}[/bold]")
+    info_table.add_row("Sessão", f"[dim]{session_id}[/dim]")
+    info_table.add_row("Módulo atual", f"[bold]{current['module_title']}[/bold]")
+    info_table.add_row("Nível", INDEPENDENCE_LABELS.get(current["independence_level"], current["independence_level"]))
+    info_table.add_row("Competência", current.get("current_competency") or "a definir")
+    console.print(info_table)
+
+    bar = Progress(
+        TextColumn("Domínio  "),
+        BarColumn(bar_width=40, style="cyan", complete_style="green"),
+        TextColumn(f" {mastery_pct * 100:.0f}%"),
+        console=console,
+    )
+    bar.add_task("", total=1.0, completed=mastery_pct)
+    with bar:
+        pass
+
+    evidence_dict = {e["evidence_kind"]: e for e in evidence}
+    ev_parts: list[str] = []
+    for kind, label in EVIDENCE_DISPLAY_LABELS.items():
+        ev = evidence_dict.get(kind, {"satisfied": 0, "best_score": 0.0})
+        icon = "[green]\u2713[/green]" if ev.get("satisfied") else "[red]\u2717[/red]"
+        ev_parts.append(f"{icon} {label}")
+    console.print(Text("Checkpoint:  ", style="bold") + Text("  ".join(ev_parts)))
+
+    _commands_panel("Comandos", border_style="dim blue")
 
 
 def render_progress(snapshot: dict) -> None:
     current = snapshot["current"]
-    console.print(
-        Panel(
-            f"[bold]{current['module_title']}[/bold]\n"
-            f"Módulo: {current['current_module']} · Nível: {current['independence_level']} · "
-            f"Competência: {current['current_competency'] or 'a definir'}",
-            title=f"Progresso de {snapshot['student']['display_name']}",
-            border_style="green",
-        )
+    _panel(
+        f"[bold]{current['module_title']}[/bold]\n"
+        f"Módulo: {current['current_module']} · Nível: {current['independence_level']} · "
+        f"Competência: {current['current_competency'] or 'a definir'}",
+        title=f"Progresso de {snapshot['student']['display_name']}",
+        border_style="green",
     )
     table = Table(box=box.SIMPLE_HEAVY, show_lines=False)
     table.add_column("Módulo", justify="right")
@@ -61,7 +159,7 @@ def render_progress(snapshot: dict) -> None:
     table.add_column("Estado")
     table.add_column("Domínio", justify="right")
     for row in snapshot["modules"]:
-        marker = "▶" if row["module_id"] == current["current_module"] else ""
+        marker = "\u25b6" if row["module_id"] == current["current_module"] else ""
         table.add_row(
             f"{marker} {row['module_id']}",
             row["title"],
@@ -70,6 +168,149 @@ def render_progress(snapshot: dict) -> None:
         )
     console.print(table)
 
+
+def render_evidence(snapshot: dict) -> None:
+    evidence = snapshot.get("evidence", [])
+    current = snapshot["current"]
+    evidence_dict = {e["evidence_kind"]: e for e in evidence}
+
+    table = Table(title=f"Checkpoint — {current['module_title']}", box=box.ROUNDED)
+    table.add_column("Evidência")
+    table.add_column("Nota", justify="right")
+    table.add_column("Satisfeita")
+
+    for kind, label in EVIDENCE_DISPLAY_LABELS.items():
+        ev = evidence_dict.get(kind, {"best_score": 0.0, "satisfied": 0})
+        satisfied = "[green]Sim[/green]" if ev.get("satisfied") else "[red]Não[/red]"
+        table.add_row(label, f"{ev.get('best_score', 0.0) * 100:.0f}%", satisfied)
+
+    console.print(table)
+    mastered = sum(1 for e in evidence if e.get("satisfied"))
+    total = len(EVIDENCE_DISPLAY_LABELS)
+    console.print(f"\nEvidências concluídas: {mastered}/{total}")
+
+
+def render_history(student_id: str, repository: ProgressRepository) -> None:
+    attempts = repository.get_progress_snapshot(student_id).get("recent_attempts", [])
+    if not attempts:
+        console.print("[dim]Nenhuma tentativa registrada ainda.[/dim]")
+        return
+
+    table = Table(title="Histórico recente", box=box.ROUNDED)
+    table.add_column("Módulo", justify="right")
+    table.add_column("Competência")
+    table.add_column("Resultado")
+    table.add_column("Nota", justify="right")
+    table.add_column("Dica")
+    table.add_column("Data")
+
+    for a in attempts[:10]:
+        style = "green" if a["result"] == "correct" else "yellow"
+        table.add_row(
+            str(a["module_id"]),
+            a["competency_key"],
+            f"[{style}]{a['result']}[/{style}]",
+            f"{a['score'] * 100:.0f}%",
+            "sim" if a["used_hint"] else "não",
+            (a.get("created_at") or "")[:16],
+        )
+
+    console.print(table)
+
+
+def render_sessions(student_id: str, repository: ProgressRepository) -> None:
+    sessions = repository.list_sessions(student_id)
+    if not sessions:
+        console.print("[dim]Nenhuma sessão encontrada para este aluno.[/dim]")
+        return
+
+    table = Table(title=f"Sessões de {student_id}", box=box.ROUNDED)
+    table.add_column("#", justify="right")
+    table.add_column("Session ID")
+    table.add_column("Mensagens", justify="right")
+    table.add_column("Última atividade")
+
+    for i, s in enumerate(sessions, 1):
+        table.add_row(
+            str(i),
+            s["session_id"],
+            str(s.get("message_count", 0)),
+            (s.get("last_active") or "")[:19],
+        )
+
+    console.print(table)
+
+
+def render_config(student: dict, settings) -> None:
+    prefs = student.get("preferences", {})
+    table = Table(title="Configuração", box=box.ROUNDED)
+    table.add_column("Parâmetro")
+    table.add_column("Valor")
+
+    table.add_row("Student ID", student["student_id"])
+    table.add_row("Nome", student["display_name"])
+    table.add_row("Streaming", "ativado" if settings.stream else "desativado")
+    table.add_row("Resumos", "ativado" if settings.session_summaries else "desativado")
+    table.add_row("Memória", "ativada" if settings.memory else "desativada")
+    table.add_row("Runs em histórico", str(settings.history_runs))
+    table.add_row("Modelo", settings.deepseek_model)
+
+    if prefs:
+        for k, v in prefs.items():
+            table.add_row(f"Pref: {k}", str(v))
+
+    console.print(table)
+
+
+def _show_turn_extras(turn: TutorTurn) -> None:
+    if turn.exercise:
+        _markdown_panel(turn.exercise.statement, f"Exercício — {turn.exercise.title}", "magenta")
+    if turn.evaluation:
+        evaluation = turn.evaluation
+        style = "green" if evaluation.result.value == "correct" else "yellow"
+        console.print(
+            f"[{style}]Avaliação: {evaluation.result.value} · "
+            f"nota {evaluation.score:.0%} · competência {evaluation.competency_key}[/{style}]"
+        )
+
+
+# ── streaming ────────────────────────────────────────────────────────────────
+
+def _run_chat_stream(service, student_id: str, session_id: str, message: str) -> TutorTurn:
+    accumulated: list[str] = []
+    turn: TutorTurn | None = None
+    spinner = console.status("[cyan]Algo Hands-On está pensando...[/cyan]", spinner="dots12")
+    spinner.start()
+    try:
+        for item in service.run_turn_stream(student_id=student_id, session_id=session_id, message=message):
+            if item.get("type") == "content":
+                accumulated.append(item["text"])
+                spinner.stop()
+                console.print(Text(item["text"], style="bright_white"), end="")
+            elif item.get("type") == "final":
+                turn = item["turn"]
+                break
+    finally:
+        if spinner._live.is_started:
+            spinner.stop()
+    console.print()
+    if turn is None:
+        combined = "".join(accumulated)
+        return TutorTurn(message_markdown=combined or "Sem resposta.", module_id=0)
+    _markdown_panel(turn.message_markdown, "Algo Hands-On")
+    return turn
+
+
+def _run_turn_and_display(service, student_id: str, session_id: str, message: str, stream: bool) -> TutorTurn:
+    if stream:
+        return _run_chat_stream(service, student_id, session_id, message)
+    with console.status("[cyan]Algo Hands-On está analisando...[/cyan]", spinner="dots12"):
+        turn = service.run_turn(student_id=student_id, session_id=session_id, message=message)
+    _markdown_panel(turn.message_markdown, "Algo Hands-On")
+    return turn
+
+
+# ── comandos Typer ───────────────────────────────────────────────────────────
 
 @app.command()
 def setup(
@@ -91,8 +332,7 @@ def progress(
     try:
         render_progress(repository.get_progress_snapshot(student_id))
     except StudentNotFoundError:
-        console.print("[red]Aluno não encontrado.[/red]")
-        raise typer.Exit(1) from None
+        _student_not_found()
 
 
 @app.command("modules")
@@ -123,7 +363,7 @@ def chat(
     errors = settings.validate_runtime()
     if errors:
         for error in errors:
-            console.print(f"[red]• {error}[/red]")
+            console.print(f"[red]\u2022 {error}[/red]")
         raise typer.Exit(1) from None
 
     try:
@@ -132,13 +372,18 @@ def chat(
         name = Prompt.ask("Nome do aluno", default=student_id)
         student = repository.create_student(student_id, name)
 
+    if session_id:
+        sessions = repository.list_sessions(student_id)
+        session_ids = {s["session_id"] for s in sessions}
+        if session_id not in session_ids:
+            console.print(f"[yellow]Sessão {session_id} não encontrada. Criando nova.[/yellow]")
+            session_id = None
+
     session_id = session_id or f"cli-{student_id}-{uuid.uuid4().hex[:10]}"
     service = TutoringService(settings, repository)
-    banner()
-    console.print(
-        f"Aluno: [bold]{student['display_name']}[/bold] · Sessão: [dim]{session_id}[/dim]\n"
-        "Digite [cyan]/ajuda[/cyan] para comandos."
-    )
+
+    snapshot = repository.get_progress_snapshot(student_id)
+    render_home(snapshot, student, session_id)
 
     while True:
         try:
@@ -148,46 +393,78 @@ def chat(
             return
         if not message:
             continue
+
         if message in {"/sair", "/exit", "/quit"}:
             console.print("[dim]Progresso salvo. Até a próxima.[/dim]")
             return
+
+        if message == "/limpar":
+            console.clear()
+            snapshot = repository.get_progress_snapshot(student_id)
+            render_home(snapshot, student, session_id)
+            continue
+
         if message == "/progresso":
             render_progress(repository.get_progress_snapshot(student_id))
             continue
+
+        if message == "/checkpoint":
+            render_evidence(repository.get_progress_snapshot(student_id))
+            continue
+
         if message == "/modulos":
             show_modules()
             continue
+
+        if message == "/historico":
+            render_history(student_id, repository)
+            continue
+
+        if message == "/sessoes":
+            render_sessions(student_id, repository)
+            continue
+
+        if message == "/config":
+            render_config(student, settings)
+            continue
+
         if message == "/ajuda":
-            console.print("/progresso · /modulos · /sair")
+            _commands_panel("Comandos disponíveis")
+            continue
+
+        if message == "/pular":
+            snapshot = repository.get_progress_snapshot(student_id)
+            cur_id = snapshot["current"]["current_module"]
+            nxt = cur_id + 1
+            if nxt > 16:
+                console.print("[yellow]Você já está no último módulo.[/yellow]")
+                continue
+            from algo_hands_on.curriculum import get_module
+
+            target = get_module(nxt)
+            console.print(f"[yellow]Isso avançará para o módulo {nxt} ({target.title}).[/yellow]")
+            if not Confirm.ask("Confirmar salto de módulo?"):
+                continue
+            repository.set_current_module(student_id, nxt, reason="skip_in_chat", session_id=session_id)
+            console.print(f"[green]Avançado para: {target.title}[/green]")
+            snapshot = repository.get_progress_snapshot(student_id)
+            render_home(snapshot, student, session_id)
+            continue
+
+        final_message = message
+        if message in CONTEXTUAL_PREFIXES:
+            final_message = f"{CONTEXTUAL_PREFIXES[message]}\n\nMensagem do aluno: {message}"
+        elif message.startswith("/"):
+            console.print(f"[yellow]Comando desconhecido: {message}[/yellow]")
             continue
 
         try:
-            with console.status("[cyan]Algo Hands-On está analisando...[/cyan]", spinner="dots12"):
-                turn = service.run_turn(
-                    student_id=student_id,
-                    session_id=session_id,
-                    message=message,
-                )
+            turn = _run_turn_and_display(service, student_id, session_id, final_message, settings.stream)
         except Exception as exc:
-            console.print(Panel(str(exc), title="Falha ao executar o agente", border_style="red"))
+            _panel(str(exc), "Falha ao executar o agente", border_style="red")
             continue
 
-        console.print(Panel(Markdown(turn.message_markdown), title="Algo Hands-On", border_style="cyan"))
-        if turn.exercise:
-            console.print(
-                Panel(
-                    Markdown(turn.exercise.statement),
-                    title=f"Exercício — {turn.exercise.title}",
-                    border_style="magenta",
-                )
-            )
-        if turn.evaluation:
-            evaluation = turn.evaluation
-            style = "green" if evaluation.result.value == "correct" else "yellow"
-            console.print(
-                f"[{style}]Avaliação: {evaluation.result.value} · "
-                f"nota {evaluation.score:.0%} · competência {evaluation.competency_key}[/{style}]"
-            )
+        _show_turn_extras(turn)
 
 
 @app.command()
@@ -200,8 +477,7 @@ def export(
     try:
         payload = repository.export_student(student_id)
     except StudentNotFoundError:
-        console.print("[red]Aluno não encontrado.[/red]")
-        raise typer.Exit(1) from None
+        _student_not_found()
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     console.print(f"[green]Exportado:[/green] {output.resolve()}")
 
@@ -213,14 +489,55 @@ def reset(
 ) -> None:
     """Reinicia o progresso pedagógico do aluno."""
     _, repository = runtime()
-    if not yes and not Confirm.ask(f"Reiniciar todo o progresso de {student_id}?"):
+    try:
+        student = repository.get_student(student_id)
+    except StudentNotFoundError:
+        _student_not_found()
+
+    console.print(f"[yellow]ATENÇÃO: Todo o progresso de {student['display_name']} será perdido.[/yellow]")
+    if not yes and not Confirm.ask(f"Confirmar reinício de {student_id}?"):
         raise typer.Abort()
+
     try:
         repository.reset_student(student_id)
     except StudentNotFoundError:
-        console.print("[red]Aluno não encontrado.[/red]")
+        _student_not_found()
+    console.print("[green]Progresso reiniciado. Auditoria registrada.[/green]")
+
+
+@app.command()
+def skip_module(
+    student_id: str = typer.Option(..., "--student-id", "-s"),
+    module_id: int = typer.Option(..., "--module", "-m", help="ID do módulo para o qual pular."),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Avança o aluno para um módulo específico (requer confirmação)."""
+    from algo_hands_on.curriculum import get_module
+
+    _, repository = runtime()
+    try:
+        student = repository.get_student(student_id)
+    except StudentNotFoundError:
+        _student_not_found()
+
+    try:
+        target = get_module(module_id)
+    except ValueError:
+        console.print(f"[red]Módulo inválido: {module_id}[/red]")
         raise typer.Exit(1) from None
-    console.print("[green]Progresso reiniciado.[/green]")
+
+    snapshot = repository.get_progress_snapshot(student_id)
+    current = snapshot["current"]["current_module"]
+    console.print(
+        f"[yellow]Atenção: {student['display_name']} será movido do "
+        f"módulo {current} para o módulo {module_id} ({target.title}).[/yellow]"
+    )
+
+    if not yes and not Confirm.ask("Confirmar salto de módulo?"):
+        raise typer.Abort()
+
+    repository.set_current_module(student_id, module_id, reason="skip_module_command")
+    console.print(f"[green]Aluno movido para o módulo {module_id} ({target.title}).[/green]")
 
 
 @app.command()
@@ -236,11 +553,14 @@ def doctor() -> None:
 
     try:
         from agno.skills import LocalSkills, Skills
-
         Skills(loaders=[LocalSkills(str(settings.skills_dir))])
         rows.append(("Validação Agno Skills", True, "ok"))
     except Exception as exc:
         rows.append(("Validação Agno Skills", False, str(exc)))
+
+    rows.append(("Streaming", True, "ativado" if settings.stream else "desativado"))
+    rows.append(("Resumos", True, "ativado" if settings.session_summaries else "desativado"))
+    rows.append(("Memória", True, "ativada" if settings.memory else "desativada"))
 
     table = Table(title=f"Algo Hands-On Doctor · v{__version__}", box=box.ROUNDED)
     table.add_column("Componente")

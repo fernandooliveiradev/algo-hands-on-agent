@@ -6,6 +6,7 @@ from agno.models.deepseek import DeepSeek
 from agno.skills import LocalSkills, Skills
 
 from algo_hands_on.config import Settings
+from algo_hands_on.hooks import post_run_validate, pre_run_context
 from algo_hands_on.schemas import TutorTurn
 
 BASE_INSTRUCTIONS = [
@@ -45,22 +46,33 @@ def build_agent(settings: Settings) -> Agent:
         exponential_backoff=True,
         timeout=90.0,
     )
-    return Agent(
-        id="algo-hands-on",
-        name="Algo Hands-On",
-        description="Tutor adaptativo de pensamento computacional, lógica, algoritmos e Python.",
-        model=model,
-        db=agno_db,
-        skills=skills,
-        instructions=BASE_INSTRUCTIONS,
-        output_schema=TutorTurn,
-        use_json_mode=True,
-        add_history_to_context=True,
-        num_history_runs=settings.history_runs,
-        add_dependencies_to_context=True,
-        markdown=True,
-        retries=2,
-        exponential_backoff=True,
-        debug_mode=settings.debug,
-        telemetry=settings.telemetry,
-    )
+    base_kwargs: dict = {
+        "id": "algo-hands-on",
+        "name": "Algo Hands-On",
+        "description": "Tutor adaptativo de pensamento computacional, lógica, algoritmos e Python.",
+        "model": model,
+        "db": agno_db,
+        "skills": skills,
+        "instructions": BASE_INSTRUCTIONS,
+        "output_schema": TutorTurn,
+        "use_json_mode": True,
+        "add_history_to_context": True,
+        "num_history_runs": settings.history_runs,
+        "add_dependencies_to_context": True,
+        "markdown": True,
+        "retries": 2,
+        "exponential_backoff": True,
+        "debug_mode": settings.debug,
+        "telemetry": settings.telemetry,
+    }
+
+    if settings.memory:
+        base_kwargs["update_memory_on_run"] = True
+
+    if settings.session_summaries:
+        base_kwargs["enable_session_summaries"] = True
+
+    base_kwargs["pre_hooks"] = [pre_run_context]
+    base_kwargs["post_hooks"] = [post_run_validate]
+
+    return Agent(**base_kwargs)

@@ -68,7 +68,6 @@ MODULES: tuple[Module, ...] = (
 )
 
 MODULE_BY_ID = {module.id: module for module in MODULES}
-MODULE_BY_SLUG = {module.slug: module for module in MODULES}
 LAST_MODULE_ID = MODULES[-1].id
 
 

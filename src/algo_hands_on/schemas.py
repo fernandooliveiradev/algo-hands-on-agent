@@ -33,6 +33,20 @@ class EvidenceKind(StrEnum):
     DIAGNOSIS = "diagnosis"
     EXPLANATION_TRANSFER = "explanation_transfer"
 
+    @property
+    def display_label(self) -> str:
+        labels: dict[str, str] = {
+            "direct_application": "Aplicação direta",
+            "independent_application": "Aplicação independente",
+            "integration": "Integração",
+            "diagnosis": "Diagnóstico",
+            "explanation_transfer": "Explicação/transferência",
+        }
+        return labels[self.value]
+
+
+EVIDENCE_DISPLAY_LABELS: dict[str, str] = {k.value: k.display_label for k in EvidenceKind}
+
 
 class ExerciseSpec(BaseModel):
     title: str = Field(min_length=3, max_length=120)

@@ -414,3 +414,44 @@ class ProgressRepository:
         snapshot["all_attempts"] = [dict(row) for row in attempts]
         snapshot["events"] = [dict(row) for row in events]
         return snapshot
+
+    def list_sessions(self, student_id: str) -> list[dict[str, Any]]:
+        self.get_student(student_id)
+        with self.factory.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT session_id, MAX(created_at) AS last_active, COUNT(*) AS message_count
+                FROM aho_learning_events
+                WHERE student_id = ? AND session_id IS NOT NULL
+                GROUP BY session_id
+                ORDER BY last_active DESC
+                """,
+                (student_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_recent_events(self, student_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        self.get_student(student_id)
+        with self.factory.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM aho_learning_events
+                WHERE student_id = ?
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (student_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_session_events(self, student_id: str, session_id: str) -> None:
+        self.get_student(student_id)
+        with self.factory.transaction(write=True) as connection:
+            connection.execute(
+                "DELETE FROM aho_exercise_attempts WHERE student_id = ? AND session_id = ?",
+                (student_id, session_id),
+            )
+            connection.execute(
+                "DELETE FROM aho_learning_events WHERE student_id = ? AND session_id = ?",
+                (student_id, session_id),
+            )
+        self.record_event(student_id, session_id, "session_deleted", {"session_id": session_id})

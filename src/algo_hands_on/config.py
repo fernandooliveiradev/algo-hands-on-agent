@@ -29,7 +29,11 @@ class Settings(BaseSettings):
     port: int = Field(default=7777, alias="AHO_PORT", ge=1, le=65535)
     reload: bool = Field(default=False, alias="AHO_RELOAD")
 
-    history_runs: int = Field(default=8, alias="AHO_HISTORY_RUNS", ge=1, le=30)
+    history_runs: int = Field(default=3, alias="AHO_HISTORY_RUNS", ge=1, le=30)
+    session_summaries: bool = Field(default=True, alias="AHO_SESSION_SUMMARIES")
+    memory: bool = Field(default=True, alias="AHO_MEMORY")
+    stream: bool = Field(default=True, alias="AHO_STREAM")
+    stream_events: bool = Field(default=True, alias="AHO_STREAM_EVENTS")
     debug: bool = Field(default=False, alias="AHO_DEBUG")
     telemetry: bool = Field(default=False, alias="AHO_TELEMETRY")
     log_level: str = Field(default="INFO", alias="AHO_LOG_LEVEL")
