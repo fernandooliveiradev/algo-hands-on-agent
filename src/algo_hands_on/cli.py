@@ -17,7 +17,7 @@ from textual.widgets import Input, RichLog, Static
 
 from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
-from algo_hands_on.curriculum import MODULES, get_module
+from algo_hands_on.curriculum import LAST_MODULE_ID, MODULES, get_module
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
 from algo_hands_on.schemas import EVIDENCE_DISPLAY_LABELS, TutorTurn
 from algo_hands_on.services.tutoring import TutoringService
@@ -32,6 +32,8 @@ console = Console()
 
 UNDEFINED_COMPETENCY = "não definida"
 BRAND_ACCENT = "#1748E8"
+PLACEHOLDER_READY = "Digite sua mensagem ou /comando..."
+PLACEHOLDER_THINKING = "Algo Hands-On está pensando..."
 
 INDEPENDENCE_LABELS: dict[str, str] = {
     "observer": "Observador",
@@ -201,9 +203,7 @@ def _turn_history_text(turn: TutorTurn) -> str:
 
 
 class ChatApp(App[None]):
-    """TUI Textual do chat com markdown, footer e barra de status."""
-
-    ENABLE_COMMAND_PALETTE = False
+    """TUI do chat com RichLog, status e input."""
 
     CSS = """
     Screen {
@@ -393,7 +393,7 @@ class ChatApp(App[None]):
 
         self._write_user(message)
         self._message.disabled = True
-        self._message.placeholder = "Algo Hands-On está pensando..."
+        self._message.placeholder = PLACEHOLDER_THINKING
         self._streaming = False
         self.run_worker(lambda: self._run_agent_turn(final_message), thread=True, exclusive=True)
 
@@ -429,7 +429,7 @@ class ChatApp(App[None]):
     def _start_skip_confirmation(self) -> None:
         current_module = self.snapshot["current"]["current_module"]
         next_module = current_module + 1
-        if next_module > 16:
+        if next_module > LAST_MODULE_ID:
             self._write_system("Você já está no último módulo.")
             return
 
@@ -504,14 +504,14 @@ class ChatApp(App[None]):
         self._write_evaluation(turn)
         self._refresh_status()
         self._message.disabled = False
-        self._message.placeholder = "Digite sua mensagem ou /comando..."
+        self._message.placeholder = PLACEHOLDER_READY
         self._streaming = False
         self._message.focus()
 
     def _finish_agent_error(self, exc: Exception) -> None:
         self._write_system(f"[red]Falha ao executar o agente: {exc}[/]")
         self._message.disabled = False
-        self._message.placeholder = "Digite sua mensagem ou /comando..."
+        self._message.placeholder = PLACEHOLDER_READY
         self._streaming = False
         self._message.focus()
 
