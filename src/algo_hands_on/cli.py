@@ -18,7 +18,7 @@ from textual.widgets import Input, Static, TextArea
 
 from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
-from algo_hands_on.curriculum import MODULES
+from algo_hands_on.curriculum import MODULES, get_module
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
 from algo_hands_on.schemas import EVIDENCE_DISPLAY_LABELS, TutorTurn
 from algo_hands_on.services.tutoring import TutoringService
@@ -82,6 +82,21 @@ def _configure_logging(settings) -> None:
 
 def _plain_commands() -> str:
     return "\n".join(f"{cmd:<12} {desc}" for cmd, desc in COMMANDS_HELP)
+
+
+def _plain_students(rows: list[dict]) -> str:
+    if not rows:
+        return "Nenhum aluno cadastrado. Use 'aho setup' para criar o primeiro."
+    lines = ["ID                 Nome                    Criado em             Módulo"]
+    for row in rows:
+        module_title = get_module(row.get("current_module", 0)).title if row.get("current_module") is not None else "—"
+        level = INDEPENDENCE_LABELS.get(row.get("independence_level", ""), row.get("independence_level", "—"))
+        lines.append(
+            f"{row['student_id']:<18} {row['display_name']:<23} "
+            f"{(row.get('created_at') or '')[:16]:<20} "
+            f"{row.get('current_module', '—'):<3} {module_title} ({level})"
+        )
+    return "\n".join(lines)
 
 
 def _plain_modules() -> str:
@@ -451,7 +466,6 @@ class ChatApp(App[None]):
         if next_module > 16:
             self._write_system("Você já está no último módulo.")
             return
-        from algo_hands_on.curriculum import get_module
 
         target = get_module(next_module)
         self.pending_skip_module = next_module
@@ -468,7 +482,6 @@ class ChatApp(App[None]):
             return
         if next_module is None:
             return
-        from algo_hands_on.curriculum import get_module
 
         target = get_module(next_module)
         self.repository.set_current_module(
@@ -594,6 +607,14 @@ def show_modules() -> None:
     console.print(_plain_modules())
 
 
+@app.command("students")
+def list_students() -> None:
+    """Lista todos os alunos cadastrados."""
+    _, repository = runtime()
+    rows = repository.list_students()
+    console.print(_plain_students(rows))
+
+
 @app.command()
 def chat(
     student_id: str = typer.Option(..., "--student-id", "-s"),
@@ -690,8 +711,6 @@ def skip_module(
     yes: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
     """Avança o aluno para um módulo específico (requer confirmação)."""
-    from algo_hands_on.curriculum import get_module
-
     _, repository = runtime()
     try:
         student = repository.get_student(student_id)

@@ -39,27 +39,31 @@ uv run aho doctor
 
 ## Uso rápido
 
+> 💡 **Você escolhe** seu `--student-id` (um apelido curto, tipo `aluno123` ou `maria`) e `--name` (seu nome como quer ser chamado).
+> Depois de criado, use o mesmo `--student-id` em todos os comandos.
+> Se esquecer qual ID usou, execute `uv run aho students` para listar todos.
+
 ```bash
-# criar aluno
-uv run aho setup --student-id <seu-id> --name "<seu-nome>"
+# 1. Primeiro passo: criar seu aluno (escolha seu ID e nome)
+uv run aho setup --student-id aluno123 --name "Maria Silva"
 
-# abrir o tutor interativo
-uv run aho chat --student-id <seu-id>
+# 2. Abrir o tutor interativo
+uv run aho chat --student-id aluno123
 
-# consultar progresso
-uv run aho progress --student-id <seu-id>
+# 3. Depois, consultar seu progresso
+uv run aho progress --student-id aluno123
 
-# continuar uma sessão anterior
-uv run aho chat --student-id <seu-id> --session-id cli-<seu-id>-abc123
+# 4. Continuar uma sessão anterior (o session-id aparece na tela inicial)
+uv run aho chat --student-id aluno123 --session-id cli-aluno123-a1b2c3d4e5
 
-# pular módulo (requer confirmação)
-uv run aho skip-module --student-id <seu-id> --module 3
+# 5. Pular módulo (requer confirmação)
+uv run aho skip-module --student-id aluno123 --module 3
 
-# exportar histórico completo
-uv run aho export --student-id <seu-id> --output progress-export-<seu-id>.json
+# 6. Exportar histórico completo
+uv run aho export --student-id aluno123 --output meu-progresso.json
 
-# reiniciar progresso (requer confirmação)
-uv run aho reset --student-id <seu-id>
+# 7. Reiniciar progresso (requer confirmação)
+uv run aho reset --student-id aluno123
 ```
 
 ## Comandos dentro do chat
@@ -85,6 +89,21 @@ A CLI 2.0 oferece uma tela inicial com progresso, barra de domínio e evidência
 | `/sair` | Encerrar a sessão |
 
 Veja [HELP.md](HELP.md) para um guia detalhado de uso.
+
+### Comandos do terminal
+
+| Comando | Descrição |
+|---------|-----------|
+| `aho setup` | Criar ou atualizar um aluno |
+| `aho chat` | Iniciar o tutor interativo |
+| `aho progress` | Consultar progressão curricular |
+| `aho modules` | Listar os 17 módulos |
+| `aho students` | Listar alunos cadastrados |
+| `aho skip-module` | Pular para um módulo |
+| `aho reset` | Reiniciar progresso |
+| `aho export` | Exportar histórico completo |
+| `aho doctor` | Validar ambiente |
+| `aho serve` | Iniciar API REST |
 
 ## Streaming e experiência
 
@@ -120,7 +139,7 @@ O AgentOS registra endpoints nativos adicionais para o agente.
 curl -X POST http://127.0.0.1:7777/api/v1/tutor/turn \
   -H "Content-Type: application/json" \
   -d '{
-    "student_id": "<seu-id>",
+    "student_id": "aluno123",
     "session_id": "estudo-001",
     "message": "Quero começar do zero"
   }'

@@ -422,3 +422,21 @@ class ProgressRepository:
                 (student_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_students(self) -> list[dict[str, Any]]:
+        """Lista todos os alunos cadastrados com resumo de progresso."""
+        with self.factory.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    s.student_id,
+                    s.display_name,
+                    s.created_at,
+                    p.current_module,
+                    p.independence_level
+                FROM aho_students s
+                LEFT JOIN aho_student_progress p ON s.student_id = p.student_id
+                ORDER BY s.created_at DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]

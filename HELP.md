@@ -74,6 +74,13 @@ Lista os 17 módulos da trilha canônica.
 uv run aho modules
 ```
 
+### `aho students`
+Lista todos os alunos cadastrados. Útil quando você esquece qual ID usou.
+
+```bash
+uv run aho students
+```
+
 ### `aho skip-module`
 Avança o aluno para um módulo específico. **Requer confirmação.**
 
