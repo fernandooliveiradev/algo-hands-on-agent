@@ -256,6 +256,7 @@ class ChatApp(App[None]):
         self.snapshot = snapshot
         self.pending_skip_module: int | None = None
         self._streaming = False
+        self._history_text = ""
 
     def compose(self) -> ComposeResult:
         yield Static(self._status_text(), id="status")
