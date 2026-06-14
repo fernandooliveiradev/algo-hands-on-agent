@@ -13,8 +13,7 @@ from rich.console import Console
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
-from textual.widgets import Input, Static, TextArea
+from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
@@ -201,65 +200,69 @@ def _turn_history_text(turn: TutorTurn) -> str:
     return "\n\n".join(parts)
 
 
-def _turn_extra_text(turn: TutorTurn) -> str:
-    parts: list[str] = []
-    if turn.exercise:
-        parts.append(f"Exercício: {turn.exercise.title}\n{turn.exercise.statement}")
-    if turn.evaluation:
-        evaluation = turn.evaluation
-        parts.append(
-            "Avaliação: "
-            f"{evaluation.result.value} - nota {evaluation.score:.0%} - "
-            f"competência {evaluation.competency_key}"
-        )
-    return "\n\n".join(parts)
-
-
 class ChatApp(App[None]):
-    """TUI Textual do chat com histórico rolável e entrada fixa."""
+    """TUI Textual do chat com markdown, footer e barra de status."""
 
     ENABLE_COMMAND_PALETTE = False
 
     CSS = """
     $brand: #1748E8;
     $brand-dark: #07133f;
+    $surface: #0d1117;
+    $text: #e6edf3;
+    $muted: #8b949e;
 
     Screen {
-        layout: vertical;
-        background: #050505;
-        color: #f4f4f5;
+        background: $surface;
+    }
+
+    Header {
+        background: $brand-dark;
+        color: $text;
+        text-style: bold;
     }
 
     #status {
         height: auto;
-        max-height: 9;
+        max-height: 7;
         padding: 1 2;
-        border: solid $brand;
-        background: #080808;
+        border-bottom: solid $brand;
+        background: #0a0e14;
+        color: $text;
     }
 
     #history {
         height: 1fr;
-        min-height: 8;
-        border: solid #3f3f46;
-        padding: 0 1;
-        background: #050505;
+        min-height: 6;
+        border: none;
+        padding: 1 2;
+        background: $surface;
+        color: $text;
+        overflow-y: scroll;
     }
 
     #message {
         dock: bottom;
-        height: 5;
-        min-height: 5;
-        border: solid $brand;
-        padding: 1 2;
+        height: 3;
+        border-top: solid $brand;
+        padding: 0 2;
         background: $brand-dark;
-        color: #f8fafc;
+        color: $text;
+    }
+
+    #message > .input--placeholder {
+        color: $muted;
+    }
+
+    Footer {
+        background: $brand-dark;
+        color: $muted;
     }
     """
 
     BINDINGS = [
-        Binding("ctrl+c", "quit", show=False),
-        Binding("ctrl+l", "clear_history", show=False),
+        Binding("ctrl+c", "quit", "Sair", show=True),
+        Binding("ctrl+l", "clear_history", "Limpar tela", show=True),
     ]
 
     def __init__(
@@ -282,31 +285,28 @@ class ChatApp(App[None]):
         self.session_id = session_id
         self.snapshot = snapshot
         self.pending_skip_module: int | None = None
-        self._streaming_response = False
-        self._history_text = ""
+        self._streaming = False
 
     def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Static(self._status_text(), id="status")
-            yield TextArea(
-                "",
-                id="history",
-                read_only=True,
-                soft_wrap=True,
-                show_cursor=False,
-                show_line_numbers=False,
-                highlight_cursor_line=False,
-                compact=True,
-            )
-            yield Input(id="message")
+        yield Header(show_clock=True)
+        yield Static(self._status_text(), id="status")
+        yield RichLog(
+            id="history",
+            highlight=True,
+            markup=True,
+            wrap=True,
+            auto_scroll=True,
+        )
+        yield Input(id="message", placeholder="Digite sua mensagem ou /comando...")
+        yield Footer()
 
     def on_mount(self) -> None:
-        self._write_system("Digite /ajuda para ver os comandos.")
+        self._write_system("[bold]Bem-vindo ao Algo Hands-On![/]\nDigite [bold]/ajuda[/] para ver os comandos disponíveis.")
         self._message.focus()
 
     @property
-    def _history(self) -> TextArea:
-        return self.query_one("#history", TextArea)
+    def _history(self) -> RichLog:
+        return self.query_one("#history", RichLog)
 
     @property
     def _message(self) -> Input:
@@ -317,9 +317,8 @@ class ChatApp(App[None]):
         return self.query_one("#status", Static)
 
     def action_clear_history(self) -> None:
-        self._history_text = ""
-        self._sync_history()
-        self._write_system("Histórico visual limpo. O progresso permanece salvo.")
+        self._history.clear()
+        self._write_system("[dim]Tela limpa. O progresso permanece salvo.[/dim]")
 
     def _status_text(self) -> str:
         current = self.snapshot["current"]
@@ -328,57 +327,69 @@ class ChatApp(App[None]):
             (m for m in self.snapshot["modules"] if m["module_id"] == current["current_module"]),
             {"mastery_score": 0.0},
         )
+        mastery_pct = module_progress.get("mastery_score", 0.0) * 100
+        bar_filled = int(mastery_pct / 10)
+        bar = f"[{"#" * bar_filled}{"·" * (10 - bar_filled)}]"
+
         evidence_by_kind = {item["evidence_kind"]: item for item in evidence}
         checkpoint = "  ".join(
-            f"[green]OK[/green] {label}"
+            f"[bold green]✓[/] {label}"
             if evidence_by_kind.get(kind, {}).get("satisfied")
-            else f"[red]X[/red] {label}"
+            else f"[dim]○[/] {label}"
             for kind, label in EVIDENCE_DISPLAY_LABELS.items()
         )
         return (
-            f"[bold {BRAND_ACCENT}]ALGO HANDS-ON[/]  Pense. Resolva. Construa.\n"
-            f"[{BRAND_ACCENT}]Aluno[/{BRAND_ACCENT}] {self.student['display_name']}   "
-            f"[{BRAND_ACCENT}]Sessão[/{BRAND_ACCENT}] {self.session_id}\n"
-            f"[{BRAND_ACCENT}]Módulo[/{BRAND_ACCENT}] {current['module_title']}   "
-            f"[{BRAND_ACCENT}]Nível[/{BRAND_ACCENT}] "
-            f"{INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}   "
-            f"[{BRAND_ACCENT}]Competência[/{BRAND_ACCENT}] "
-            f"{current.get('current_competency') or UNDEFINED_COMPETENCY}   "
-            f"[{BRAND_ACCENT}]Domínio[/{BRAND_ACCENT}] {module_progress.get('mastery_score', 0.0) * 100:.0f}%\n"
-            f"[bold]Checkpoint:[/bold] {checkpoint}"
+            f"[bold #58a6ff]{current['module_title']}[/]  "
+            f"[dim]Nível:[/] {INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}  "
+            f"[dim]Domínio:[/] {bar} {mastery_pct:.0f}%\n"
+            f"[dim]Checkpoint:[/] {checkpoint}"
         )
 
     def _refresh_status(self) -> None:
         self.snapshot = self.repository.get_progress_snapshot(self.student_id)
         self._status.update(self._status_text())
 
+    # ── escrita no RichLog ────────────────────────────────────────────────
+
     def _write_user(self, message: str) -> None:
-        self._write_block("Você", message)
+        self._history.write(f"\n[bold #58a6ff]Você:[/] {message}")
 
     def _write_system(self, message: str) -> None:
-        self._write_block("Sistema", message)
+        self._history.write(f"\n[dim italic]{message}[/]")
 
-    def _write_assistant(self, turn: TutorTurn) -> None:
-        self._write_block("Algo Hands-On", _turn_history_text(turn))
+    def _write_assistant_block(self, text: str) -> None:
+        self._history.write("\n[bold #7ee787]Algo Hands-On:[/]")
+        self._history.write(text)
 
-    def _write_captured(self, title: str, content: str) -> None:
-        self._write_system(f"{title}\n{content or 'Sem dados.'}")
+    def _write_streaming_header(self) -> None:
+        self._history.write("\n[bold #7ee787]Algo Hands-On:[/] ")
 
-    def _write_block(self, title: str, body: str = "") -> None:
-        lines = [title, *(body.splitlines() or [""]), ""]
-        self._history_text += "\n".join(lines) + "\n"
-        self._sync_history()
+    def _append_streaming_text(self, text: str) -> None:
+        self._history.write(text, animate=False)
 
-    def _append_assistant_delta(self, text: str) -> None:
-        if not self._streaming_response:
-            self._streaming_response = True
-            self._history_text += "Algo Hands-On\n"
-        self._history_text += text
-        self._sync_history()
+    def _write_exercise_card(self, turn: TutorTurn) -> None:
+        if not turn.exercise:
+            return
+        ex = turn.exercise
+        constraints = "\n".join(f"• {c}" for c in ex.constraints) if ex.constraints else ""
+        self._history.write(
+            f"\n[bold yellow]▸ Exercício: {ex.title}[/]\n"
+            f"{ex.statement}"
+            + (f"\n\n[dim]Regras:[/]\n{constraints}" if constraints else "")
+        )
 
-    def _sync_history(self) -> None:
-        self._history.load_text(self._history_text)
-        self._history.scroll_end(animate=False, immediate=True)
+    def _write_evaluation_footer(self, turn: TutorTurn) -> None:
+        if not turn.evaluation:
+            return
+        ev = turn.evaluation
+        icon = "✓" if ev.result.value == "correct" else ("⚠" if ev.result.value == "correct_with_hint" else "✗")
+        color = "green" if ev.result.value == "correct" else ("yellow" if ev.result.value == "correct_with_hint" else "red")
+        self._history.write(
+            f"\n[bold {color}]{icon} {ev.result.value}[/]  "
+            f"[dim]nota {ev.score:.0%}  competência {ev.competency_key}[/]"
+        )
+
+    # ── processamento de mensagens ────────────────────────────────────────
 
     @on(Input.Submitted, "#message")
     def _on_input_submitted(self, event: Input.Submitted) -> None:
@@ -406,39 +417,40 @@ class ChatApp(App[None]):
         if final_message:
             final_message = f"{final_message}\n\nMensagem do aluno: {message}"
         elif message.startswith("/"):
-            self._write_system(f"Comando desconhecido: {message}")
+            self._write_system(f"[yellow]Comando desconhecido: {message}[/]")
             return
         else:
             final_message = message
 
         self._write_user(message)
         self._message.disabled = True
-        self._write_system("Algo Hands-On está pensando...")
+        self._message.placeholder = "Algo Hands-On está pensando..."
+        self._streaming = False
         self.run_worker(lambda: self._run_agent_turn(final_message), thread=True, exclusive=True)
 
     def _handle_local_command(self, message: str) -> bool:
         if message == "/progresso":
             self._refresh_status()
-            self._write_captured("Progresso", _plain_progress(self.snapshot))
+            self._write_system(f"[bold]Progresso[/]\n{_plain_progress(self.snapshot)}")
             return True
         if message == "/checkpoint":
             self._refresh_status()
-            self._write_captured("Checkpoint", _plain_evidence(self.snapshot))
+            self._write_system(f"[bold]Checkpoint[/]\n{_plain_evidence(self.snapshot)}")
             return True
         if message == "/modulos":
-            self._write_captured("Módulos", _plain_modules())
+            self._write_system(f"[bold]Módulos[/]\n{_plain_modules()}")
             return True
         if message == "/historico":
-            self._write_captured("Histórico", _plain_history(self.student_id, self.repository))
+            self._write_system(f"[bold]Histórico[/]\n{_plain_history(self.student_id, self.repository)}")
             return True
         if message == "/sessoes":
-            self._write_captured("Sessões", _plain_sessions(self.student_id, self.repository))
+            self._write_system(f"[bold]Sessões[/]\n{_plain_sessions(self.student_id, self.repository)}")
             return True
         if message == "/config":
-            self._write_captured("Configuração", _plain_config(self.student, self.settings))
+            self._write_system(f"[bold]Configuração[/]\n{_plain_config(self.student, self.settings)}")
             return True
         if message == "/ajuda":
-            self._write_captured("Comandos", _plain_commands())
+            self._write_system(f"[bold]Comandos[/]\n{_plain_commands()}")
             return True
         if message == "/pular":
             self._start_skip_confirmation()
@@ -455,8 +467,8 @@ class ChatApp(App[None]):
         target = get_module(next_module)
         self.pending_skip_module = next_module
         self._write_system(
-            f"Isso avançará para o módulo {next_module} ({target.title}). "
-            "Digite /sim para confirmar ou /nao para cancelar."
+            f"[yellow]Isso avançará para o módulo {next_module} ({target.title}).[/] "
+            "Digite [bold]/sim[/] para confirmar ou [bold]/nao[/] para cancelar."
         )
 
     def _handle_skip_confirmation(self, message: str) -> None:
@@ -476,7 +488,7 @@ class ChatApp(App[None]):
             session_id=self.session_id,
         )
         self._refresh_status()
-        self._write_system(f"Avançado para: {target.title}")
+        self._write_system(f"[green]Avançado para: {target.title}[/]")
 
     def _run_agent_turn(self, final_message: str) -> None:
         try:
@@ -489,12 +501,16 @@ class ChatApp(App[None]):
                 ):
                     event_type = event.get("type")
                     if event_type == "content":
-                        self.call_from_thread(self._append_assistant_delta, event["text"])
+                        if not self._streaming:
+                            self._streaming = True
+                            self.call_from_thread(self._write_streaming_header)
+                        self.call_from_thread(self._append_streaming_text, event["text"])
                     elif event_type == "parsing":
-                        # Evento interno — não exibe texto no chat
-                        pass
+                        pass  # evento interno, não exibe
                     elif event_type == "warning":
-                        self.call_from_thread(self._append_assistant_delta, f"\n[Aviso: {event['text']}]")
+                        self.call_from_thread(
+                            self._write_system, f"[yellow]Aviso: {event['text']}[/]"
+                        )
                     elif event_type == "final":
                         final_turn = event["turn"]
                 if final_turn is None:
@@ -502,7 +518,6 @@ class ChatApp(App[None]):
                     raise RuntimeError(msg)
                 turn = final_turn
             else:
-                self.call_from_thread(self._append_assistant_delta, "Processando...")
                 turn = self.service.run_turn(
                     student_id=self.student_id,
                     session_id=self.session_id,
@@ -514,23 +529,19 @@ class ChatApp(App[None]):
         self.call_from_thread(self._finish_agent_turn, turn)
 
     def _finish_agent_turn(self, turn: TutorTurn) -> None:
-        if self._streaming_response:
-            extra = _turn_extra_text(turn)
-            if extra:
-                self._history_text += "\n" + extra
-            self._history_text += "\n\n"
-            self._sync_history()
-        else:
-            self._write_assistant(turn)
-        self._streaming_response = False
+        self._write_exercise_card(turn)
+        self._write_evaluation_footer(turn)
         self._refresh_status()
         self._message.disabled = False
+        self._message.placeholder = "Digite sua mensagem ou /comando..."
+        self._streaming = False
         self._message.focus()
 
     def _finish_agent_error(self, exc: Exception) -> None:
-        self._streaming_response = False
-        self._write_system(f"Falha ao executar o agente: {exc}")
+        self._write_system(f"[red]Falha ao executar o agente: {exc}[/]")
         self._message.disabled = False
+        self._message.placeholder = "Digite sua mensagem ou /comando..."
+        self._streaming = False
         self._message.focus()
 
 
