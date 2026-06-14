@@ -13,7 +13,7 @@ from algo_hands_on.schemas import AttemptResult, EvaluationResult, EvidenceKind
 
 
 class StudentNotFoundError(LookupError):
-    pass
+    """Aluno não encontrado no repositório de progresso."""
 
 
 class ProgressRepository:
@@ -81,13 +81,6 @@ class ProgressRepository:
         result = dict(row)
         result["preferences"] = json.loads(result.pop("preferences_json"))
         return result
-
-    def list_students(self) -> list[dict[str, Any]]:
-        with self.factory.transaction() as connection:
-            rows = connection.execute(
-                "SELECT student_id, display_name, created_at, updated_at FROM aho_students ORDER BY display_name"
-            ).fetchall()
-        return [dict(row) for row in rows]
 
     def get_progress_snapshot(self, student_id: str) -> dict[str, Any]:
         self.get_student(student_id)
@@ -429,29 +422,3 @@ class ProgressRepository:
                 (student_id,),
             ).fetchall()
         return [dict(row) for row in rows]
-
-    def get_recent_events(self, student_id: str, limit: int = 20) -> list[dict[str, Any]]:
-        self.get_student(student_id)
-        with self.factory.transaction() as connection:
-            rows = connection.execute(
-                """
-                SELECT * FROM aho_learning_events
-                WHERE student_id = ?
-                ORDER BY created_at DESC LIMIT ?
-                """,
-                (student_id, limit),
-            ).fetchall()
-        return [dict(row) for row in rows]
-
-    def delete_session_events(self, student_id: str, session_id: str) -> None:
-        self.get_student(student_id)
-        with self.factory.transaction(write=True) as connection:
-            connection.execute(
-                "DELETE FROM aho_exercise_attempts WHERE student_id = ? AND session_id = ?",
-                (student_id, session_id),
-            )
-            connection.execute(
-                "DELETE FROM aho_learning_events WHERE student_id = ? AND session_id = ?",
-                (student_id, session_id),
-            )
-        self.record_event(student_id, session_id, "session_deleted", {"session_id": session_id})

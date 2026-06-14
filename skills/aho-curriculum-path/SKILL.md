@@ -1,6 +1,6 @@
 ---
 name: aho-curriculum-path
-description: Planejamento e nivelamento curricular do Algo Hands-On. Use para definir ponto inicial, pré-requisitos, marcos e plano de estudo baseado em competências.
+description: Planejamento e nivelamento curricular do Algo Hands-On. Use para escolher ponto inicial, pré-requisitos, marcos e plano de estudo baseado em competências.
 license: MIT
 metadata:
   version: "2.0.0"

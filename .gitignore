@@ -11,6 +11,12 @@ htmlcov/
 *.db-wal
 data/*
 !data/.gitkeep
+progress-export*.json
+session-export*.json
+chat-history*.json
+backup*.json
+*.log
+logs/
 *.egg-info/
 .DS_Store
 .idea/

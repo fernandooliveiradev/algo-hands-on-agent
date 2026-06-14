@@ -2,7 +2,7 @@
 
 **Pense. Resolva. Construa.**
 
-Tutor adaptativo de pensamento computacional, lógica de programação, algoritmos e Python construído com **Agno Framework**, **DeepSeek**, **SQLite**, **FastAPI/Uvicorn**, **Typer** e **Rich**.
+Tutor adaptativo de pensamento computacional, lógica de programação, algoritmos e Python construído com **Agno Framework**, **DeepSeek**, **SQLite**, **FastAPI/Uvicorn**, **Typer**, **Rich** e **Textual**.
 
 ## Arquitetura
 
@@ -29,7 +29,7 @@ cp .env.example .env
 uv sync --extra dev
 ```
 
-O pacote não inclui `uv.lock`. Na primeira instalação, o `uv` gera um lock local usando o PyPI público.
+O pacote inclui `uv.lock` para instalações reproduzíveis.
 
 ## Diagnóstico
 
@@ -56,7 +56,7 @@ uv run aho chat --student-id fernando --session-id cli-fernando-abc123
 uv run aho skip-module --student-id fernando --module 3
 
 # exportar histórico completo
-uv run aho export --student-id fernando --output backup.json
+uv run aho export --student-id fernando --output progress-export-fernando.json
 
 # reiniciar progresso (requer confirmação)
 uv run aho reset --student-id fernando
@@ -187,7 +187,7 @@ algo-hands-on-agent/
 │   ├── services/              # TutoringService (orquestrador)
 │   ├── agent_factory.py       # Construtor do agente Agno
 │   ├── api.py                 # FastAPI + AgentOS
-│   ├── cli.py                 # CLI com Typer + Rich
+│   ├── cli.py                 # CLI com Typer + Rich + Textual
 │   ├── config.py              # Configuração (pydantic-settings)
 │   ├── curriculum.py          # 17 módulos da trilha
 │   ├── hooks.py               # Pre/post hooks de validação
@@ -197,7 +197,6 @@ algo-hands-on-agent/
 ├── TRILHA-AHO.md              # Currículo canônico completo
 ├── HELP.md                    # Guia detalhado de uso
 ├── AGENTS.md                  # Contrato do agente
-├── CHANGELOG.md
 ├── pyproject.toml
 └── .env.example
 ```

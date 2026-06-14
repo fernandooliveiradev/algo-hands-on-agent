@@ -87,7 +87,7 @@ class TutorTurn(BaseModel):
 
     @field_validator("competency_key")
     @classmethod
-    def normalize_competency(cls, value: str | None) -> str | None:
+    def normalize_competency(_cls, value: str | None) -> str | None:
         return value.strip().lower().replace(" ", "-") if value else None
 
 

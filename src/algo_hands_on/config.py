@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     @field_validator("db_path", "skills_dir", mode="before")
     @classmethod
-    def resolve_path(cls, value: str | Path) -> Path:
+    def resolve_path(_cls, value: str | Path) -> Path:
         path = Path(value).expanduser()
         return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
 
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     def validate_runtime(self) -> list[str]:
         errors: list[str] = []
-        if not self.deepseek_api_key or self.deepseek_api_key == "coloque_sua_chave_aqui":
+        if not self.deepseek_api_key:
             errors.append("DEEPSEEK_API_KEY não foi configurada.")
         if not self.skills_dir.exists():
             errors.append(f"Diretório de skills não existe: {self.skills_dir}")

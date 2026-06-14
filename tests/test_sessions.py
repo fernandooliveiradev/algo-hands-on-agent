@@ -1,29 +1,16 @@
-from pathlib import Path
+from collections.abc import Callable
 
 from algo_hands_on.db.repository import ProgressRepository
-from algo_hands_on.schemas import AttemptResult, EvaluationResult, EvidenceKind
+from algo_hands_on.schemas import EvaluationResult, EvidenceKind
 
 
-def evaluation(kind: EvidenceKind, module_id: int = 0, student_id: str = "aluno") -> EvaluationResult:
-    return EvaluationResult(
-        result=AttemptResult.CORRECT,
-        score=0.9,
-        used_hint=False,
-        module_id=module_id,
-        competency_key="diagnostico-inicial",
-        evidence_kind=kind,
-        concepts_demonstrated=["raciocinio"],
-        feedback="Bom trabalho.",
-    )
-
-
-def test_sessions_isolated_by_student(tmp_path: Path) -> None:
-    repository = ProgressRepository(tmp_path / "aho.db")
-    repository.initialize()
+def test_sessions_isolated_by_student(
+    repository: ProgressRepository, make_evaluation: Callable[..., EvaluationResult]
+) -> None:
     repository.create_student("fernando", "Fernando")
     repository.create_student("maria", "Maria")
 
-    eval_data = evaluation(EvidenceKind.DIRECT, module_id=0)
+    eval_data = make_evaluation(EvidenceKind.DIRECT, module_id=0)
     repository.record_evaluation(student_id="fernando", session_id="sessao-f1", evaluation=eval_data)
     repository.record_evaluation(student_id="fernando", session_id="sessao-f2", evaluation=eval_data)
     repository.record_evaluation(student_id="maria", session_id="sessao-m1", evaluation=eval_data)
@@ -41,28 +28,13 @@ def test_sessions_isolated_by_student(tmp_path: Path) -> None:
     assert "sessao-f1" not in maria_ids
 
 
-def test_list_sessions_empty_for_new_student(tmp_path: Path) -> None:
-    repository = ProgressRepository(tmp_path / "aho.db")
-    repository.initialize()
+def test_list_sessions_empty_for_new_student(repository: ProgressRepository) -> None:
     repository.create_student("novo", "Novo")
     sessions = repository.list_sessions("novo")
     assert sessions == []
 
 
-def test_recent_events_capped(tmp_path: Path) -> None:
-    repository = ProgressRepository(tmp_path / "aho.db")
-    repository.initialize()
-    repository.create_student("aluno", "Aluno")
-    # Record events without session
-    for i in range(5):
-        repository.record_event("aluno", None, "test_event", {"index": i})
-    events = repository.get_recent_events("aluno", limit=3)
-    assert len(events) == 3
-
-
-def test_module_skip_preserves_mastered_status(tmp_path: Path) -> None:
-    repository = ProgressRepository(tmp_path / "aho.db")
-    repository.initialize()
+def test_module_skip_preserves_mastered_status(repository: ProgressRepository) -> None:
     repository.create_student("aluno", "Aluno")
 
     snapshot = repository.get_progress_snapshot("aluno")
@@ -74,13 +46,13 @@ def test_module_skip_preserves_mastered_status(tmp_path: Path) -> None:
     assert snapshot["modules"][0]["status"] != "mastered"
 
 
-def test_progress_reset_isolation(tmp_path: Path) -> None:
-    repository = ProgressRepository(tmp_path / "aho.db")
-    repository.initialize()
+def test_progress_reset_isolation(
+    repository: ProgressRepository, make_evaluation: Callable[..., EvaluationResult]
+) -> None:
     repository.create_student("a", "Aluno A")
     repository.create_student("b", "Aluno B")
 
-    eval_data = evaluation(EvidenceKind.DIRECT, module_id=0)
+    eval_data = make_evaluation(EvidenceKind.DIRECT, module_id=0)
     repository.record_evaluation(student_id="a", session_id="s1", evaluation=eval_data)
     repository.record_evaluation(student_id="b", session_id="s1", evaluation=eval_data)
 

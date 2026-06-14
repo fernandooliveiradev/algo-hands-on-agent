@@ -19,25 +19,25 @@ Guia completo para usar o tutor Algo Hands-On no terminal.
 
 ```bash
 # 1. Clone o repositório e entre na pasta
-git clone <repo-url> && cd algo-hands-on-agent
+git clone https://github.com/fernandooliveiradev/algo-hands-on-agent.git
+cd algo-hands-on-agent
 
 # 2. Copie o arquivo de ambiente
 cp .env.example .env
 
 # 3. Edite .env e configure sua chave DeepSeek
-# DEEPSEEK_API_KEY=sk-sua-chave-aqui
 
-# 4. Instale as dependências (gera uv.lock no seu ambiente)
+# 4. Instale as dependências
 uv sync --extra dev
 
 # 5. Execute o diagnóstico
 uv run aho doctor
 
 # 6. Crie seu aluno
-uv run aho setup --student-id seu-nome --name "Seu Nome"
+uv run aho setup --student-id maria --name "Maria Silva"
 
 # 7. Inicie o tutor
-uv run aho chat --student-id seu-nome
+uv run aho chat --student-id maria
 ```
 
 ## Comandos do terminal
@@ -96,7 +96,7 @@ uv run aho reset --student-id maria --yes   # sem confirmação
 Exporta o histórico pedagógico completo como JSON.
 
 ```bash
-uv run aho export --student-id maria --output backup.json
+uv run aho export --student-id maria --output progress-export-maria.json
 ```
 
 ### `aho doctor`
@@ -257,9 +257,7 @@ Todas as variáveis de ambiente em `.env`:
 ### `DEEPSEEK_API_KEY não foi configurada`
 
 Edite o arquivo `.env` e defina sua chave:
-```
-DEEPSEEK_API_KEY=sk-sua-chave-aqui
-```
+Preencha `DEEPSEEK_API_KEY` no arquivo `.env`.
 
 ### `Módulo inválido: X`
 
@@ -269,7 +267,7 @@ Os módulos válidos vão de 0 a 16. Use `aho modules` para ver a lista completa
 
 Crie o aluno primeiro:
 ```bash
-uv run aho setup --student-id seu-nome --name "Seu Nome"
+uv run aho setup --student-id maria --name "Maria Silva"
 ```
 
 ### O terminal congela sem resposta
