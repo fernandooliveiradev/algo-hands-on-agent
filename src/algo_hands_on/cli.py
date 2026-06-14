@@ -10,10 +10,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
-from textual import on
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.widgets import Input, Static, TextArea
+from rich.prompt import Prompt
 
 from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
@@ -32,9 +29,6 @@ console = Console()
 
 UNDEFINED_COMPETENCY = "não definida"
 BRAND_ACCENT = "#1748E8"
-PLACEHOLDER_READY = "Digite sua mensagem ou /comando..."
-PLACEHOLDER_THINKING = "Algo Hands-On está pensando..."
-
 INDEPENDENCE_LABELS: dict[str, str] = {
     "observer": "Observador",
     "guided": "Guiado",
@@ -202,317 +196,131 @@ def _turn_history_text(turn: TutorTurn) -> str:
     return "\n\n".join(parts)
 
 
-class ChatApp(App[None]):
-    """TUI do chat com RichLog, status e input."""
+def _run_rich_chat(
+    *,
+    settings,
+    repository: ProgressRepository,
+    service: TutoringService,
+    student: dict,
+    student_id: str,
+    session_id: str,
+    snapshot: dict,
+) -> None:
+    """Chat usando apenas Rich — sem Textual, sem widgets, sem CSS."""
+    _console = Console()
+    current = snapshot["current"]
 
-    _history_text: str = ""
+    # Cabeçalho
+    evidence = snapshot.get("evidence", [])
+    evidence_by_kind = {item["evidence_kind"]: item for item in evidence}
+    checkpoint = "  ".join(
+        f"[green]✓[/] {label}" if evidence_by_kind.get(kind, {}).get("satisfied")
+        else f"[dim]○[/] {label}"
+        for kind, label in EVIDENCE_DISPLAY_LABELS.items()
+    )
 
-    CSS = """
-    #status {
-        dock: top;
-        width: 100%;
-        height: auto;
-        max-height: 5;
-        padding: 1 2;
-        border-bottom: solid #1748E8;
-    }
+    _console.print(f"[bold blue]{current['module_title']}[/]  "
+                   f"{INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}")
+    _console.print(f"Checkpoint: {checkpoint}")
+    _console.print("[dim]Digite /ajuda para comandos, /sair para encerrar.[/]\n")
 
-    #history {
-        width: 100%;
-        height: 1fr;
-        padding: 0 2;
-    }
+    while True:
+        try:
+            message = Prompt.ask("[bold]Você[/]").strip()
+        except (KeyboardInterrupt, EOFError):
+            _console.print("\n[dim]Até logo.[/]")
+            break
 
-    #message {
-        dock: bottom;
-        width: 100%;
-        height: 3;
-        padding: 0 2;
-        border-top: solid #1748E8;
-    }
-    """
-
-    BINDINGS = [
-        Binding("ctrl+c", "quit", "Sair", show=True),
-        Binding("ctrl+l", "clear_history", "Limpar tela", show=True),
-    ]
-
-    def __init__(
-        self,
-        *,
-        settings,
-        repository: ProgressRepository,
-        service: TutoringService,
-        student: dict,
-        student_id: str,
-        session_id: str,
-        snapshot: dict,
-    ) -> None:
-        super().__init__()
-        self.settings = settings
-        self.repository = repository
-        self.service = service
-        self.student = student
-        self.student_id = student_id
-        self.session_id = session_id
-        self.snapshot = snapshot
-        self.pending_skip_module: int | None = None
-        self._streaming = False
-
-    def compose(self) -> ComposeResult:
-        yield Static(self._status_text(), id="status")
-        yield TextArea(
-            "",
-            id="history",
-            read_only=True,
-            soft_wrap=True,
-            show_line_numbers=False,
-        )
-        yield Input(id="message", placeholder="Digite sua mensagem ou /comando...")
-
-    def on_mount(self) -> None:
-        self._append("Bem-vindo ao Algo Hands-On!")
-        self._append("Digite /ajuda para ver os comandos.")
-        self._message.focus()
-
-    @property
-    def _history(self) -> TextArea:
-        return self.query_one("#history", TextArea)
-
-    @property
-    def _message(self) -> Input:
-        return self.query_one("#message", Input)
-
-    @property
-    def _status_widget(self) -> Static:
-        return self.query_one("#status", Static)
-
-    def action_clear_history(self) -> None:
-        self._history_text = ""
-        self._history.load_text("")
-        self._append("Tela limpa. Progresso salvo.")
-
-    def _status_text(self) -> str:
-        current = self.snapshot["current"]
-        evidence = self.snapshot.get("evidence", [])
-        module_progress = next(
-            (m for m in self.snapshot["modules"] if m["module_id"] == current["current_module"]),
-            {"mastery_score": 0.0},
-        )
-        mastery_pct = module_progress.get("mastery_score", 0.0) * 100
-        bar_filled = int(mastery_pct / 10)
-        bar = f"[{"#" * bar_filled}{"·" * (10 - bar_filled)}]"
-
-        evidence_by_kind = {item["evidence_kind"]: item for item in evidence}
-        checkpoint = "  ".join(
-            f"V {label}"
-            if evidence_by_kind.get(kind, {}).get("satisfied")
-            else f"O {label}"
-            for kind, label in EVIDENCE_DISPLAY_LABELS.items()
-        )
-        return (
-            f"{current['module_title']}  "
-            f"Nivel: {INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}  "
-            f"Dominio: {bar} {mastery_pct:.0f}%\n"
-            f"Checkpoint: {checkpoint}"
-        )
-
-    def _refresh_status(self) -> None:
-        self.snapshot = self.repository.get_progress_snapshot(self.student_id)
-        self._status_widget.update(self._status_text())
-
-    # ── escrita ──────────────────────────────────────────────────────────
-
-    def _append(self, text: str) -> None:
-        self._history_text += text
-        self._history.load_text(self._history_text)
-        self._history.scroll_end(animate=False)
-
-    def _write_user(self, message: str) -> None:
-        self._append(f"\nVoce: {message}")
-
-    def _write_system(self, message: str) -> None:
-        self._append(f"\n{message}")
-
-    def _start_assistant(self) -> None:
-        self._append("\nAlgo Hands-On: ")
-
-    def _append_text(self, text: str) -> None:
-        self._append(text)
-
-    def _write_exercise(self, turn: TutorTurn) -> None:
-        if not turn.exercise:
-            return
-        ex = turn.exercise
-        text = f"\nExercicio: {ex.title}\n{ex.statement}"
-        if ex.constraints:
-            text += "\n\nRegras:\n" + "\n".join(f"  - {c}" for c in ex.constraints)
-        self._append(text)
-
-    def _write_evaluation(self, turn: TutorTurn) -> None:
-        if not turn.evaluation:
-            return
-        ev = turn.evaluation
-        self._append(
-            f"\n{ev.result.value} | nota {ev.score:.0%} | {ev.competency_key}"
-        )
-
-    # ── processamento de mensagens ────────────────────────────────────────
-
-    @on(Input.Submitted, "#message")
-    def _on_input_submitted(self, event: Input.Submitted) -> None:
-        message = event.value.strip()
-        self._message.value = ""
         if not message:
-            return
-
-        if self.pending_skip_module is not None:
-            self._handle_skip_confirmation(message)
-            return
+            continue
 
         if message in {"/sair", "/exit", "/quit"}:
-            self.exit()
-            return
+            _console.print("[dim]Progresso salvo. Até a próxima.[/]")
+            break
 
         if message == "/limpar":
-            self.action_clear_history()
-            return
+            _console.clear()
+            continue
 
-        if self._handle_local_command(message):
-            return
+        # Comandos locais
+        if message == "/progresso":
+            snapshot = repository.get_progress_snapshot(student_id)
+            _console.print(_plain_progress(snapshot))
+            continue
+        if message == "/checkpoint":
+            snapshot = repository.get_progress_snapshot(student_id)
+            _console.print(_plain_evidence(snapshot))
+            continue
+        if message == "/modulos":
+            _console.print(_plain_modules())
+            continue
+        if message == "/historico":
+            _console.print(_plain_history(student_id, repository))
+            continue
+        if message == "/sessoes":
+            _console.print(_plain_sessions(student_id, repository))
+            continue
+        if message == "/config":
+            _console.print(_plain_config(student, settings))
+            continue
+        if message == "/ajuda":
+            _console.print(_plain_commands())
+            continue
+        if message == "/pular":
+            next_module = current["current_module"] + 1
+            if next_module > LAST_MODULE_ID:
+                _console.print("[dim]Último módulo.[/]")
+                continue
+            target = get_module(next_module)
+            if Prompt.ask(f"[yellow]Avançar para {target.title}?[/]", choices=["s", "n"], default="n") == "s":
+                repository.set_current_module(student_id, next_module, reason="skip_in_chat", session_id=session_id)
+                snapshot = repository.get_progress_snapshot(student_id)
+                current = snapshot["current"]
+                _console.print(f"[green]Avançado: {target.title}[/]")
+            continue
+        if message.startswith("/"):
+            _console.print(f"[yellow]Comando: {message} não reconhecido.[/]")
+            continue
 
+        # Envia ao agente
         final_message = CONTEXTUAL_PREFIXES.get(message)
         if final_message:
             final_message = f"{final_message}\n\nMensagem do aluno: {message}"
-        elif message.startswith("/"):
-            self._write_system(f"Comando desconhecido: {message}")
-            return
         else:
             final_message = message
 
-        self._write_user(message)
-        self._message.disabled = True
-        self._message.placeholder = PLACEHOLDER_THINKING
-        self._streaming = False
-        self.run_worker(lambda: self._run_agent_turn(final_message), thread=True, exclusive=True)
-
-    def _handle_local_command(self, message: str) -> bool:
-        if message == "/progresso":
-            self._refresh_status()
-            self._write_system(f"--- Progresso ---\n{_plain_progress(self.snapshot)}")
-            return True
-        if message == "/checkpoint":
-            self._refresh_status()
-            self._write_system(f"--- Checkpoint ---\n{_plain_evidence(self.snapshot)}")
-            return True
-        if message == "/modulos":
-            self._write_system(f"--- Modulos ---\n{_plain_modules()}")
-            return True
-        if message == "/historico":
-            self._write_system(f"--- Historico ---\n{_plain_history(self.student_id, self.repository)}")
-            return True
-        if message == "/sessoes":
-            self._write_system(f"--- Sessoes ---\n{_plain_sessions(self.student_id, self.repository)}")
-            return True
-        if message == "/config":
-            self._write_system(f"--- Configuracao ---\n{_plain_config(self.student, self.settings)}")
-            return True
-        if message == "/ajuda":
-            self._write_system(f"--- Comandos ---\n{_plain_commands()}")
-            return True
-        if message == "/pular":
-            self._start_skip_confirmation()
-            return True
-        return False
-
-    def _start_skip_confirmation(self) -> None:
-        current_module = self.snapshot["current"]["current_module"]
-        next_module = current_module + 1
-        if next_module > LAST_MODULE_ID:
-            self._write_system("Você já está no último módulo.")
-            return
-
-        target = get_module(next_module)
-        self.pending_skip_module = next_module
-        self._write_system(
-            f"Isso avancara para o modulo {next_module} ({target.title}). "
-            "Digite /sim para confirmar ou /nao para cancelar."
-        )
-
-    def _handle_skip_confirmation(self, message: str) -> None:
-        next_module = self.pending_skip_module
-        self.pending_skip_module = None
-        if message.lower() not in {"/sim", "sim", "s", "yes", "y"}:
-            self._write_system("Salto de módulo cancelado.")
-            return
-        if next_module is None:
-            return
-
-        target = get_module(next_module)
-        self.repository.set_current_module(
-            self.student_id,
-            next_module,
-            reason="skip_in_chat",
-            session_id=self.session_id,
-        )
-        self._refresh_status()
-        self._write_system(f"Avancado para: {target.title}")
-
-    def _run_agent_turn(self, final_message: str) -> None:
-        try:
-            if self.settings.stream:
-                final_turn: TutorTurn | None = None
-                for event in self.service.run_turn_stream(
-                    student_id=self.student_id,
-                    session_id=self.session_id,
-                    message=final_message,
-                ):
-                    event_type = event.get("type")
-                    if event_type == "content":
-                        if not self._streaming:
-                            self._streaming = True
-                            self.call_from_thread(self._start_assistant)
-                        self.call_from_thread(self._append_text, event["text"])
-                    elif event_type == "parsing":
-                        pass  # evento interno, não exibe
-                    elif event_type == "warning":
-                        self.call_from_thread(
-                            self._write_system, f"Aviso: {event['text']}"
-                        )
-                    elif event_type == "final":
-                        final_turn = event["turn"]
-                if final_turn is None:
-                    msg = "Streaming terminou sem turno final validado. Tente novamente."
-                    raise RuntimeError(msg)
-                turn = final_turn
-            else:
-                turn = self.service.run_turn(
-                    student_id=self.student_id,
-                    session_id=self.session_id,
+        with _console.status("[dim]Pensando...[/]"):
+            try:
+                turn = service.run_turn(
+                    student_id=student_id,
+                    session_id=session_id,
                     message=final_message,
                 )
-        except Exception as exc:
-            self.call_from_thread(self._finish_agent_error, exc)
-            return
-        self.call_from_thread(self._finish_agent_turn, turn)
+            except Exception as exc:
+                _console.print(f"[red]Erro: {exc}[/]")
+                continue
 
-    def _finish_agent_turn(self, turn: TutorTurn) -> None:
-        if not self._streaming:
-            self._append(f"\nAlgo Hands-On: {turn.message_markdown}")
-        self._write_exercise(turn)
-        self._write_evaluation(turn)
-        self._refresh_status()
-        self._message.disabled = False
-        self._message.placeholder = PLACEHOLDER_READY
-        self._streaming = False
-        self._message.focus()
+        _console.print("\n[bold green]Algo Hands-On:[/]")
+        _console.print(turn.message_markdown)
 
-    def _finish_agent_error(self, exc: Exception) -> None:
-        self._write_system(f"Falha ao executar o agente: {exc}")
-        self._message.disabled = False
-        self._message.placeholder = PLACEHOLDER_READY
-        self._streaming = False
-        self._message.focus()
+        if turn.exercise:
+            _console.print(f"\n[yellow]▸ {turn.exercise.title}[/]")
+            _console.print(turn.exercise.statement)
+            if turn.exercise.constraints:
+                _console.print("\n[dim]Regras:[/]")
+                for c in turn.exercise.constraints:
+                    _console.print(f"  • {c}")
+
+        if turn.evaluation:
+            _console.print(
+                f"\n[dim]{turn.evaluation.result.value} | "
+                f"nota {turn.evaluation.score:.0%} | "
+                f"{turn.evaluation.competency_key}[/]"
+            )
+
+        snapshot = repository.get_progress_snapshot(student_id)
+        current = snapshot["current"]
+        _console.print()
 
 
 def _run_pipe_chat(
@@ -693,7 +501,7 @@ def _offer_actions(settings, repository, student_id: str) -> None:
             console.print(f"[red]Aluno {student_id} não encontrado.[/red]")
             return
 
-        ChatApp(
+        _run_rich_chat(
             settings=settings,
             repository=repository,
             service=service,
@@ -701,7 +509,7 @@ def _offer_actions(settings, repository, student_id: str) -> None:
             student_id=student_id,
             session_id=session_id,
             snapshot=snapshot,
-        ).run()
+        )
         console.print("[dim]Progresso salvo. Até a próxima.[/dim]")
         return
 
@@ -760,7 +568,7 @@ def chat(
 
     snapshot = repository.get_progress_snapshot(student_id)
     if sys.stdin.isatty():
-        ChatApp(
+        _run_rich_chat(
             settings=settings,
             repository=repository,
             service=service,
@@ -768,8 +576,7 @@ def chat(
             student_id=student_id,
             session_id=session_id,
             snapshot=snapshot,
-        ).run()
-        console.print("[dim]Progresso salvo. Até a próxima.[/dim]")
+        )
         return
 
     _run_pipe_chat(
