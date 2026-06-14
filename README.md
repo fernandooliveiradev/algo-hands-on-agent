@@ -64,6 +64,9 @@ uv run aho export --student-id aluno123 --output meu-progresso.json
 
 # 7. Reiniciar progresso (requer confirmação)
 uv run aho reset --student-id aluno123
+
+# 8. Limpar TODO o banco para começar do zero (requer confirmação)
+uv run aho clean
 ```
 
 ## Comandos dentro do chat
@@ -95,23 +98,25 @@ Veja [HELP.md](HELP.md) para um guia detalhado de uso.
 | Comando | Descrição |
 |---------|-----------|
 | `aho setup` | Criar ou atualizar um aluno |
-| `aho chat` | Iniciar o tutor interativo |
+| `aho chat` | Iniciar o tutor interativo (TUI Textual) |
+| `aho students` | Menu interativo: listar, conversar, progresso, exportar |
 | `aho progress` | Consultar progressão curricular |
-| `aho modules` | Listar os 17 módulos |
-| `aho students` | Listar alunos e escolher ação (chat, progresso, exportar) |
-| `aho skip-module` | Pular para um módulo |
-| `aho reset` | Reiniciar progresso |
-| `aho export` | Exportar histórico completo |
-| `aho doctor` | Validar ambiente |
-| `aho serve` | Iniciar API REST |
+| `aho modules` | Listar os 17 módulos da trilha |
+| `aho skip-module` | Pular para um módulo (requer confirmação) |
+| `aho reset` | Reiniciar progresso de um aluno |
+| `aho export` | Exportar histórico completo em JSON |
+| `aho clean` | Limpar TODO o banco (alunos, progresso, memórias) |
+| `aho doctor` | Validar ambiente, banco e skills |
+| `aho serve` | Iniciar API REST + AgentOS |
 
 ## Streaming e experiência
 
+- TUI construída com **Textual**: status bar com barra de domínio e checkpoint, histórico rolável com scroll automático, input fixo no rodapé.
 - As respostas do tutor aparecem **progressivamente** no terminal (streaming).
-- A tela inicial mostra módulo atual, nível de independência, barra de domínio e as 5 evidências do checkpoint.
-- A interface usa a cor de marca `#1748E8`. Para aproximar a tipografia da marca, configure o perfil do terminal com Encode Sans ou a fonte da sua preferência.
+- Durante o processamento, o placeholder do input muda para "Algo Hands-On está pensando...".
+- Atalhos de teclado: `Ctrl+C` sair, `Ctrl+L` limpar tela.
+- Ações destrutivas (reset, skip, pular, clean) exigem **confirmação explícita**.
 - Eventos internos são traduzidos em feedback curto; logs detalhados exigem `AHO_DEBUG=true`.
-- Ações destrutivas (reset, skip, pular) exigem **confirmação explícita**.
 
 ## API e AgentOS
 
@@ -180,14 +185,16 @@ Acertos com dica são registrados mas **não** concluem a evidência.
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
 | `DEEPSEEK_API_KEY` | (obrigatório) | Chave da API DeepSeek |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | Modelo a ser usado |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | Modelo DeepSeek (ex: `deepseek-chat`, `deepseek-v4-flash`) |
 | `AHO_DB_PATH` | `./data/aho.db` | Caminho do banco SQLite |
-| `AHO_SKILLS_DIR` | `./skills` | Diretório de skills |
-| `AHO_HISTORY_RUNS` | `3` | Runs mantidos em contexto |
-| `AHO_SESSION_SUMMARIES` | `true` | Resumos automáticos de sessão |
-| `AHO_MEMORY` | `true` | Memória de preferências do aluno |
-| `AHO_STREAM` | `true` | Streaming de resposta |
-| `AHO_DEBUG` | `false` | Logs detalhados |
+| `AHO_SKILLS_DIR` | `./skills` | Diretório de skills pedagógicas |
+| `AHO_HISTORY_RUNS` | `3` | Mensagens mantidas em contexto por turno |
+| `AHO_MEMORY` | `true` | Memória de preferências do aluno (Agno) |
+| `AHO_SESSION_SUMMARIES` | `true` | Resumos automáticos de conversas longas |
+| `AHO_STREAM` | `true` | Streaming de resposta no chat |
+| `AHO_DEBUG` | `false` | Logs detalhados no terminal |
+| `AHO_TELEMETRY` | `false` | Telemetria do Agno |
+| `AHO_LOG_LEVEL` | `INFO` | Nível de log (DEBUG, INFO, WARNING, ERROR) |
 | `AHO_HOST` | `127.0.0.1` | Host da API |
 | `AHO_PORT` | `7777` | Porta da API |
 
@@ -202,22 +209,32 @@ uv run ruff check .
 
 ```text
 algo-hands-on-agent/
-├── skills/                    # Skills pedagógicas (Agno LocalSkills)
+├── skills/                           # 10 skills pedagógicas (Agno LocalSkills)
+│   ├── aho-start-here/               #   Módulo 0 — Entrada e diagnóstico
+│   ├── aho-stage-router/             #   Roteamento curricular
+│   ├── aho-curriculum-path/          #   Planejamento e nivelamento
+│   ├── aho-tutor-core/               #   Núcleo pedagógico (todos os módulos)
+│   ├── aho-guided-lessons/           #   Motor de prática e checkpoint
+│   ├── aho-computational-thinking/   #   Módulo 1 — Pensamento computacional
+│   ├── aho-algorithm-representation/ #   Módulo 2 — Algoritmos e pseudocódigo
+│   ├── aho-python-foundations/       #   Módulos 3–8 — Fundamentos de Python
+│   ├── aho-algorithms-data-structures/ # Módulos 9–10, 13 — Algoritmos
+│   └── aho-portfolio-projects/       #   Módulos 11–12, 14–16 — Projetos
 ├── src/algo_hands_on/
-│   ├── db/                    # SQLite: schema, conexão, repositório
-│   ├── services/              # TutoringService (orquestrador)
-│   ├── agent_factory.py       # Construtor do agente Agno
-│   ├── api.py                 # FastAPI + AgentOS
-│   ├── cli.py                 # CLI com Typer + Rich + Textual
-│   ├── config.py              # Configuração (pydantic-settings)
-│   ├── curriculum.py          # 17 módulos da trilha
-│   ├── hooks.py               # Pre/post hooks de validação
-│   └── schemas.py             # Schemas Pydantic (TutorTurn, etc.)
+│   ├── db/                           # SQLite: schema, conexão, repositório
+│   ├── services/                     # TutoringService (orquestrador)
+│   ├── agent_factory.py              # Construtor do agente Agno + parser
+│   ├── api.py                        # FastAPI + AgentOS
+│   ├── cli.py                        # CLI (Typer) + TUI (Textual)
+│   ├── config.py                     # Configuração (pydantic-settings)
+│   ├── curriculum.py                 # 17 módulos da trilha
+│   ├── hooks.py                      # Pre/post hooks de validação
+│   └── schemas.py                    # Schemas Pydantic (TutorTurn, etc.)
 ├── tests/
-├── scripts/bootstrap.sh       # Setup de primeiro uso
-├── TRILHA-AHO.md              # Currículo canônico completo
-├── HELP.md                    # Guia detalhado de uso
-├── AGENTS.md                  # Contrato do agente
+├── scripts/bootstrap.sh              # Setup de primeiro uso
+├── TRILHA-AHO.md                     # Currículo canônico completo
+├── HELP.md                           # Guia detalhado de uso
+├── AGENTS.md                         # Contrato do agente
 ├── pyproject.toml
 └── .env.example
 ```
