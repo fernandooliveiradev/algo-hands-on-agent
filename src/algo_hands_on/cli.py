@@ -13,7 +13,7 @@ from rich.console import Console
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Header, Input, RichLog, Static
 
 from algo_hands_on import __version__
 from algo_hands_on.config import get_settings
@@ -216,15 +216,9 @@ class ChatApp(App[None]):
         background: $surface;
     }
 
-    Header {
-        background: $brand-dark;
-        color: $text;
-        text-style: bold;
-    }
-
     #status {
         height: auto;
-        max-height: 7;
+        max-height: 6;
         padding: 1 2;
         border-bottom: solid $brand;
         background: #0a0e14;
@@ -238,12 +232,12 @@ class ChatApp(App[None]):
         padding: 1 2;
         background: $surface;
         color: $text;
-        overflow-y: scroll;
     }
 
     #message {
-        dock: bottom;
-        height: 3;
+        height: auto;
+        min-height: 3;
+        max-height: 3;
         border-top: solid $brand;
         padding: 0 2;
         background: $brand-dark;
@@ -251,11 +245,6 @@ class ChatApp(App[None]):
     }
 
     #message > .input--placeholder {
-        color: $muted;
-    }
-
-    Footer {
-        background: $brand-dark;
         color: $muted;
     }
     """
@@ -298,7 +287,6 @@ class ChatApp(App[None]):
             auto_scroll=True,
         )
         yield Input(id="message", placeholder="Digite sua mensagem ou /comando...")
-        yield Footer()
 
     def on_mount(self) -> None:
         self._write_system("[bold]Bem-vindo ao Algo Hands-On![/]\nDigite [bold]/ajuda[/] para ver os comandos disponíveis.")
