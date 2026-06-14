@@ -75,7 +75,7 @@ uv run aho modules
 ```
 
 ### `aho students`
-Lista todos os alunos cadastrados. Útil quando você esquece qual ID usou.
+Lista todos os alunos e oferece um menu interativo: conversar, ver progresso, exportar ou reiniciar.
 
 ```bash
 uv run aho students

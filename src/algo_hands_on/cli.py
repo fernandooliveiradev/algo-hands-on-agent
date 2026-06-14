@@ -84,21 +84,6 @@ def _plain_commands() -> str:
     return "\n".join(f"{cmd:<12} {desc}" for cmd, desc in COMMANDS_HELP)
 
 
-def _plain_students(rows: list[dict]) -> str:
-    if not rows:
-        return "Nenhum aluno cadastrado. Use 'aho setup' para criar o primeiro."
-    lines = ["ID                 Nome                    Criado em             Módulo"]
-    for row in rows:
-        module_title = get_module(row.get("current_module", 0)).title if row.get("current_module") is not None else "—"
-        level = INDEPENDENCE_LABELS.get(row.get("independence_level", ""), row.get("independence_level", "—"))
-        lines.append(
-            f"{row['student_id']:<18} {row['display_name']:<23} "
-            f"{(row.get('created_at') or '')[:16]:<20} "
-            f"{row.get('current_module', '—'):<3} {module_title} ({level})"
-        )
-    return "\n".join(lines)
-
-
 def _plain_modules() -> str:
     lines = ["ID  Módulo                                      Skill                         Extensão"]
     for module in MODULES:
@@ -609,10 +594,154 @@ def show_modules() -> None:
 
 @app.command("students")
 def list_students() -> None:
-    """Lista todos os alunos cadastrados."""
-    _, repository = runtime()
+    """Lista alunos cadastrados e oferece ações."""
+    settings, repository = runtime()
     rows = repository.list_students()
-    console.print(_plain_students(rows))
+
+    if not rows:
+        console.print("[yellow]Nenhum aluno cadastrado.[/yellow]")
+        if typer.confirm("Deseja criar um agora?"):
+            student_id = typer.prompt("ID do aluno (ex: maria, joao123)")
+            name = typer.prompt("Nome")
+            student = repository.create_student(student_id, name)
+            console.print(f"[green]Aluno criado:[/green] {student['display_name']} ({student['student_id']})")
+            _offer_actions(settings, repository, student_id)
+        return
+
+    _render_student_table(rows)
+
+    if len(rows) == 1:
+        student_id = rows[0]["student_id"]
+        console.print(f"[dim]Aluno selecionado automaticamente: {student_id}[/dim]")
+    else:
+        ids = [row["student_id"] for row in rows]
+        student_id = _pick_student(ids, rows)
+        if student_id is None:
+            return
+
+    _offer_actions(settings, repository, student_id)
+
+
+def _render_student_table(rows: list[dict]) -> None:
+    from rich.table import Table
+
+    table = Table(title="Alunos cadastrados")
+    table.add_column("#", style="dim", width=3)
+    table.add_column("ID")
+    table.add_column("Nome")
+    table.add_column("Módulo")
+    table.add_column("Nível")
+    for i, row in enumerate(rows, 1):
+        module_title = get_module(row.get("current_module", 0)).title if row.get("current_module") is not None else "—"
+        level = INDEPENDENCE_LABELS.get(row.get("independence_level", ""), row.get("independence_level", "—"))
+        table.add_row(str(i), row["student_id"], row["display_name"], module_title, level)
+    console.print(table)
+
+
+def _pick_student(ids: list[str], rows: list[dict]) -> str | None:
+    console.print("\n[bold]Digite o número ou ID do aluno:[/bold]")
+    choice = typer.prompt("Aluno", default="1")
+
+    # Tenta como número
+    try:
+        idx = int(choice) - 1
+        if 0 <= idx < len(ids):
+            return ids[idx]
+    except ValueError:
+        pass
+
+    # Tenta como ID exato
+    if choice in ids:
+        return choice
+
+    # Tenta match parcial
+    matches = [sid for sid in ids if choice.lower() in sid.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        console.print(f"[yellow]Múltiplos matches: {', '.join(matches)}. Seja mais específico.[/yellow]")
+        return None
+
+    console.print(f"[red]Aluno '{choice}' não encontrado.[/red]")
+    return None
+
+
+def _offer_actions(settings, repository, student_id: str) -> None:
+    student = repository.get_student(student_id)
+    snapshot = repository.get_progress_snapshot(student_id)
+    current = snapshot["current"]
+
+    console.print(f"\n[bold {BRAND_ACCENT}]Aluno: {student['display_name']} | Módulo: {current['module_title']} | Nível: {INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}[/]")
+    console.print()
+
+    actions = [
+        ("Conversar com o tutor", "chat"),
+        ("Ver progresso", "progress"),
+        ("Exportar histórico", "export"),
+        ("Reiniciar progresso", "reset"),
+    ]
+    for i, (label, _) in enumerate(actions, 1):
+        console.print(f"  {i}. {label}")
+    console.print("  0. Sair")
+    console.print()
+
+    choice = typer.prompt("O que deseja fazer", default="1")
+
+    try:
+        idx = int(choice)
+    except ValueError:
+        console.print("[dim]Até logo.[/dim]")
+        return
+
+    if idx == 0:
+        console.print("[dim]Até logo.[/dim]")
+        return
+
+    if idx == 1:
+        # Inicia chat — reusa a lógica do comando chat
+        session_id = f"cli-{student_id}-{uuid.uuid4().hex[:10]}"
+        service = TutoringService(settings, repository)
+        from algo_hands_on.db.repository import StudentNotFoundError
+
+        try:
+            student_check = repository.get_student(student_id)
+        except StudentNotFoundError:
+            console.print(f"[red]Aluno {student_id} não encontrado.[/red]")
+            return
+
+        ChatApp(
+            settings=settings,
+            repository=repository,
+            service=service,
+            student=student_check,
+            student_id=student_id,
+            session_id=session_id,
+            snapshot=snapshot,
+        ).run()
+        console.print("[dim]Progresso salvo. Até a próxima.[/dim]")
+        return
+
+    if idx == 2:
+        console.print(_plain_progress(snapshot))
+        return
+
+    if idx == 3:
+        output = Path(f"progress-export-{student_id}.json")
+        payload = repository.export_student(student_id)
+        output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        console.print(f"[green]Exportado:[/green] {output.resolve()}")
+        return
+
+    if idx == 4:
+        console.print(f"[yellow]ATENÇÃO: Todo o progresso de {student['display_name']} será perdido.[/yellow]")
+        if typer.confirm(f"Confirmar reinício de {student_id}?"):
+            repository.reset_student(student_id)
+            console.print("[green]Progresso reiniciado.[/green]")
+        else:
+            console.print("[dim]Cancelado.[/dim]")
+        return
+
+    console.print("[dim]Opção inválida.[/dim]")
 
 
 @app.command()

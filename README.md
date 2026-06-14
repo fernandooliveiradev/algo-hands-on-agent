@@ -98,7 +98,7 @@ Veja [HELP.md](HELP.md) para um guia detalhado de uso.
 | `aho chat` | Iniciar o tutor interativo |
 | `aho progress` | Consultar progressão curricular |
 | `aho modules` | Listar os 17 módulos |
-| `aho students` | Listar alunos cadastrados |
+| `aho students` | Listar alunos e escolher ação (chat, progresso, exportar) |
 | `aho skip-module` | Pular para um módulo |
 | `aho reset` | Reiniciar progresso |
 | `aho export` | Exportar histórico completo |
