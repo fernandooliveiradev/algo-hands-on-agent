@@ -106,14 +106,14 @@ class TutoringService:
         )
 
         run_id = "unknown"
-        content_chunks: list[str] = []
+        json_chunks: list[str] = []
         turn_from_object: TutorTurn | None = None
+        last_displayed_len = 0
 
         for chunk in run_stream:
             if hasattr(chunk, "run_id") and chunk.run_id:
                 run_id = str(chunk.run_id)
 
-            # Identifica eventos de tool call para filtrar
             event_type = getattr(chunk, "event", None)
             is_tool_event = False
             if event_type is not None:
@@ -121,27 +121,68 @@ class TutoringService:
                 is_tool_event = "Tool" in event_name or "tool" in event_name
 
             chunk_content = getattr(chunk, "content", None)
-            if chunk_content is not None:
-                if isinstance(chunk_content, TutorTurn):
-                    turn_from_object = chunk_content
-                elif isinstance(chunk_content, str):
-                    # Só acumula conteudo que nao seja evento de ferramenta
-                    if not is_tool_event:
-                        content_chunks.append(chunk_content)
-                        yield {"type": "content", "text": chunk_content}
-                else:
-                    content_chunks.append(str(chunk_content))
+            if chunk_content is None:
+                continue
 
-        # Prioridade: objeto TutorTurn ja parseado > parse do ultimo chunk > fallback
+            if isinstance(chunk_content, TutorTurn):
+                turn_from_object = chunk_content
+                continue
+
+            if isinstance(chunk_content, str):
+                if is_tool_event:
+                    continue
+                json_chunks.append(chunk_content)
+                # Extrai message_markdown parcial para streaming visual
+                display_text = self._extract_partial_markdown("".join(json_chunks))
+                if display_text and len(display_text) > last_displayed_len:
+                    delta = display_text[last_displayed_len:]
+                    last_displayed_len = len(display_text)
+                    yield {"type": "content", "text": delta}
+            else:
+                json_chunks.append(str(chunk_content))
+
+        # Prioridade: objeto TutorTurn > parse do JSON acumulado > fallback
         if turn_from_object is not None:
             turn = turn_from_object
         else:
-            combined = "".join(content_chunks).strip()
-            # Tenta extrair o ultimo objeto JSON valido
+            combined = "".join(json_chunks).strip()
             turn = self._parse_stream_content(combined, snapshot)
 
         turn = self._finalize_turn(turn, student_id, session_id, snapshot, run_id)
         yield {"type": "final", "turn": turn}
+
+    @staticmethod
+    def _extract_partial_markdown(text: str) -> str:
+        """Extrai message_markdown parcial de JSON incompleto via estado."""
+        key = '"message_markdown": "'
+        idx = text.find(key)
+        if idx == -1:
+            return ""
+        start = idx + len(key)
+        result: list[str] = []
+        i = start
+        escaped = False
+        while i < len(text):
+            ch = text[i]
+            if escaped:
+                result.append(ch)
+                escaped = False
+                i += 1
+                continue
+            if ch == "\\":
+                result.append(ch)
+                escaped = True
+                i += 1
+                continue
+            if ch == '"':
+                break
+            result.append(ch)
+            i += 1
+        raw = "".join(result)
+        # Decodifica escapes JSON parciais
+        raw = raw.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+        raw = raw.replace('\\"', '"').replace("\\\\", "\\")
+        return raw
 
     @staticmethod
     def _parse_stream_content(combined: str, snapshot: dict) -> TutorTurn:
