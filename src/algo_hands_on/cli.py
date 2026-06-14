@@ -207,18 +207,25 @@ class ChatApp(App[None]):
 
     CSS = """
     $brand: #1748E8;
-    $brand-dark: #07133f;
+    $brand-dark: #0a1a3f;
     $surface: #0d1117;
     $text: #e6edf3;
     $muted: #8b949e;
 
     Screen {
+        layout: vertical;
         background: $surface;
     }
 
+    Header {
+        background: $brand-dark;
+        color: $text;
+    }
+
     #status {
+        width: 100%;
         height: auto;
-        max-height: 6;
+        max-height: 5;
         padding: 1 2;
         border-bottom: solid $brand;
         background: #0a0e14;
@@ -226,20 +233,22 @@ class ChatApp(App[None]):
     }
 
     #history {
+        width: 100%;
         height: 1fr;
         min-height: 6;
         border: none;
-        padding: 1 2;
+        padding: 1 3;
         background: $surface;
         color: $text;
     }
 
     #message {
+        width: 100%;
         height: auto;
         min-height: 3;
         max-height: 3;
         border-top: solid $brand;
-        padding: 0 2;
+        padding: 0 3;
         background: $brand-dark;
         color: $text;
     }
