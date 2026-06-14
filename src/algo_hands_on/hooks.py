@@ -8,25 +8,23 @@ from algo_hands_on.schemas import AttemptResult, TutorTurn
 logger = logging.getLogger(__name__)
 
 
-def pre_run_context(context: Any) -> None:
-    """Pre-hook: valida que as dependências foram injetadas e registra o início da execução."""
-    deps = getattr(context, "dependencies", {}) or {}
-    student_id = getattr(context, "user_id", "desconhecido")
-    session_id = getattr(context, "session_id", "desconhecida")
-    logger.debug(
-        "Pre-run | aluno=%s | sessão=%s | módulo=%s",
-        student_id,
-        session_id,
-        deps.get("student_progress", {}).get("current", {}).get("current_module", "?"),
-    )
+def pre_run_context(**kwargs: Any) -> None:
+    """Pre-hook: registra o inicio da execucao e dados disponiveis no contexto."""
+    student_id = kwargs.get("user_id", "desconhecido")
+    session_id = kwargs.get("session_id", "desconhecida")
+    logger.debug("Pre-run | aluno=%s | sessao=%s", student_id, session_id)
 
 
-def post_run_validate(context: Any) -> None:
-    """Post-hook: valida que o TutorTurn foi produzido e audita desvios."""
-    content = getattr(context, "content", None)
+def post_run_validate(**kwargs: Any) -> None:
+    """Post-hook: valida o TutorTurn e audita desvios na resposta."""
+    content = kwargs.get("content") or kwargs.get("run_response")
     if content is None:
         logger.warning("Post-run | resposta vazia")
         return
+
+    # Extrai o texto/conteudo do RunResponse se for objeto Agno
+    if hasattr(content, "content"):
+        content = content.content
 
     turn: TutorTurn | None = None
     if isinstance(content, TutorTurn):
@@ -42,7 +40,7 @@ def post_run_validate(context: Any) -> None:
         return
 
     logger.debug(
-        "Post-run | turn=%s | módulo=%s | competência=%s | avaliação=%s",
+        "Post-run | turn=%s | modulo=%s | competencia=%s | avaliacao=%s",
         turn.turn_type.value,
         turn.module_id,
         turn.competency_key,
@@ -54,4 +52,4 @@ def post_run_validate(context: Any) -> None:
         and turn.evaluation.evidence_kind is None
         and turn.evaluation.result in {AttemptResult.CORRECT, AttemptResult.CORRECT_WITH_HINT}
     ):
-        logger.warning("Post-run | evidência ausente em avaliação positiva")
+        logger.warning("Post-run | evidencia ausente em avaliacao positiva")
