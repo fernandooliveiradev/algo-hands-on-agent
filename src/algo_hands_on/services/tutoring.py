@@ -107,27 +107,67 @@ class TutoringService:
 
         run_id = "unknown"
         content_chunks: list[str] = []
+        turn_from_object: TutorTurn | None = None
+
         for chunk in run_stream:
             if hasattr(chunk, "run_id") and chunk.run_id:
                 run_id = str(chunk.run_id)
+
+            # Identifica eventos de tool call para filtrar
+            event_type = getattr(chunk, "event", None)
+            is_tool_event = False
+            if event_type is not None:
+                event_name = getattr(event_type, "__name__", "") if hasattr(event_type, "__name__") else str(event_type)
+                is_tool_event = "Tool" in event_name or "tool" in event_name
+
             chunk_content = getattr(chunk, "content", None)
-            if chunk_content:
-                if isinstance(chunk_content, str):
-                    content_chunks.append(chunk_content)
-                    yield {"type": "content", "text": chunk_content}
+            if chunk_content is not None:
+                if isinstance(chunk_content, TutorTurn):
+                    turn_from_object = chunk_content
+                elif isinstance(chunk_content, str):
+                    # Só acumula conteudo que nao seja evento de ferramenta
+                    if not is_tool_event:
+                        content_chunks.append(chunk_content)
+                        yield {"type": "content", "text": chunk_content}
                 else:
                     content_chunks.append(str(chunk_content))
 
-        combined = "".join(content_chunks)
-        try:
-            if combined.strip().startswith("{"):
-                turn = TutorTurn.model_validate_json(combined)
-            else:
-                turn = TutorTurn(message_markdown=combined or "Sem resposta.",
-                                 module_id=snapshot["current"]["current_module"])
-        except Exception:
-            turn = TutorTurn(message_markdown=combined or "Sem resposta.",
-                             module_id=snapshot["current"]["current_module"])
+        # Prioridade: objeto TutorTurn ja parseado > parse do ultimo chunk > fallback
+        if turn_from_object is not None:
+            turn = turn_from_object
+        else:
+            combined = "".join(content_chunks).strip()
+            # Tenta extrair o ultimo objeto JSON valido
+            turn = self._parse_stream_content(combined, snapshot)
 
         turn = self._finalize_turn(turn, student_id, session_id, snapshot, run_id)
         yield {"type": "final", "turn": turn}
+
+    @staticmethod
+    def _parse_stream_content(combined: str, snapshot: dict) -> TutorTurn:
+        if not combined:
+            return TutorTurn(message_markdown="Sem resposta.",
+                             module_id=snapshot["current"]["current_module"])
+        # Tenta cada chunk individualmente (do ultimo para o primeiro)
+        json_attempts: list[str] = []
+        brace_depth = 0
+        start = -1
+        for i, ch in enumerate(combined):
+            if ch == "{":
+                if brace_depth == 0:
+                    start = i
+                brace_depth += 1
+            elif ch == "}":
+                brace_depth -= 1
+                if brace_depth == 0 and start >= 0:
+                    json_attempts.append(combined[start:i + 1])
+                    start = -1
+        # Tenta parsear cada bloco JSON, do ultimo para o primeiro
+        for candidate in reversed(json_attempts):
+            try:
+                return TutorTurn.model_validate_json(candidate)
+            except Exception:
+                continue
+        # Fallback: usa o texto combinado como markdown
+        return TutorTurn(message_markdown=combined or "Sem resposta.",
+                         module_id=snapshot["current"]["current_module"])
