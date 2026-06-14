@@ -284,7 +284,7 @@ class ChatApp(App[None]):
         return self.query_one("#message", Input)
 
     @property
-    def _status(self) -> Static:
+    def _status_widget(self) -> Static:
         return self.query_one("#status", Static)
 
     def action_clear_history(self) -> None:
@@ -305,21 +305,21 @@ class ChatApp(App[None]):
 
         evidence_by_kind = {item["evidence_kind"]: item for item in evidence}
         checkpoint = "  ".join(
-            f"[bold green]✓[/] {label}"
+            f"V {label}"
             if evidence_by_kind.get(kind, {}).get("satisfied")
-            else f"[dim]○[/] {label}"
+            else f"O {label}"
             for kind, label in EVIDENCE_DISPLAY_LABELS.items()
         )
         return (
-            f"[bold #58a6ff]{current['module_title']}[/]  "
-            f"[dim]Nível:[/] {INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}  "
-            f"[dim]Domínio:[/] {bar} {mastery_pct:.0f}%\n"
-            f"[dim]Checkpoint:[/] {checkpoint}"
+            f"{current['module_title']}  "
+            f"Nivel: {INDEPENDENCE_LABELS.get(current['independence_level'], current['independence_level'])}  "
+            f"Dominio: {bar} {mastery_pct:.0f}%\n"
+            f"Checkpoint: {checkpoint}"
         )
 
     def _refresh_status(self) -> None:
         self.snapshot = self.repository.get_progress_snapshot(self.student_id)
-        self._status.update(self._status_text())
+        self._status_widget.update(self._status_text())
 
     # ── escrita ──────────────────────────────────────────────────────────
 
@@ -385,7 +385,7 @@ class ChatApp(App[None]):
         if final_message:
             final_message = f"{final_message}\n\nMensagem do aluno: {message}"
         elif message.startswith("/"):
-            self._write_system(f"[yellow]Comando desconhecido: {message}[/]")
+            self._write_system(f"Comando desconhecido: {message}")
             return
         else:
             final_message = message
@@ -399,26 +399,26 @@ class ChatApp(App[None]):
     def _handle_local_command(self, message: str) -> bool:
         if message == "/progresso":
             self._refresh_status()
-            self._write_system(f"[bold]Progresso[/]\n{_plain_progress(self.snapshot)}")
+            self._write_system(f"--- Progresso ---\n{_plain_progress(self.snapshot)}")
             return True
         if message == "/checkpoint":
             self._refresh_status()
-            self._write_system(f"[bold]Checkpoint[/]\n{_plain_evidence(self.snapshot)}")
+            self._write_system(f"--- Checkpoint ---\n{_plain_evidence(self.snapshot)}")
             return True
         if message == "/modulos":
-            self._write_system(f"[bold]Módulos[/]\n{_plain_modules()}")
+            self._write_system(f"--- Modulos ---\n{_plain_modules()}")
             return True
         if message == "/historico":
-            self._write_system(f"[bold]Histórico[/]\n{_plain_history(self.student_id, self.repository)}")
+            self._write_system(f"--- Historico ---\n{_plain_history(self.student_id, self.repository)}")
             return True
         if message == "/sessoes":
-            self._write_system(f"[bold]Sessões[/]\n{_plain_sessions(self.student_id, self.repository)}")
+            self._write_system(f"--- Sessoes ---\n{_plain_sessions(self.student_id, self.repository)}")
             return True
         if message == "/config":
-            self._write_system(f"[bold]Configuração[/]\n{_plain_config(self.student, self.settings)}")
+            self._write_system(f"--- Configuracao ---\n{_plain_config(self.student, self.settings)}")
             return True
         if message == "/ajuda":
-            self._write_system(f"[bold]Comandos[/]\n{_plain_commands()}")
+            self._write_system(f"--- Comandos ---\n{_plain_commands()}")
             return True
         if message == "/pular":
             self._start_skip_confirmation()
@@ -435,8 +435,8 @@ class ChatApp(App[None]):
         target = get_module(next_module)
         self.pending_skip_module = next_module
         self._write_system(
-            f"[yellow]Isso avançará para o módulo {next_module} ({target.title}).[/] "
-            "Digite [bold]/sim[/] para confirmar ou [bold]/nao[/] para cancelar."
+            f"Isso avancara para o modulo {next_module} ({target.title}). "
+            "Digite /sim para confirmar ou /nao para cancelar."
         )
 
     def _handle_skip_confirmation(self, message: str) -> None:
@@ -456,7 +456,7 @@ class ChatApp(App[None]):
             session_id=self.session_id,
         )
         self._refresh_status()
-        self._write_system(f"[green]Avançado para: {target.title}[/]")
+        self._write_system(f"Avancado para: {target.title}")
 
     def _run_agent_turn(self, final_message: str) -> None:
         try:
@@ -477,7 +477,7 @@ class ChatApp(App[None]):
                         pass  # evento interno, não exibe
                     elif event_type == "warning":
                         self.call_from_thread(
-                            self._write_system, f"[yellow]Aviso: {event['text']}[/]"
+                            self._write_system, f"Aviso: {event['text']}"
                         )
                     elif event_type == "final":
                         final_turn = event["turn"]
@@ -508,7 +508,7 @@ class ChatApp(App[None]):
         self._message.focus()
 
     def _finish_agent_error(self, exc: Exception) -> None:
-        self._write_system(f"[red]Falha ao executar o agente: {exc}[/]")
+        self._write_system(f"Falha ao executar o agente: {exc}")
         self._message.disabled = False
         self._message.placeholder = PLACEHOLDER_READY
         self._streaming = False
