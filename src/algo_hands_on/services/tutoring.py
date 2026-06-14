@@ -6,12 +6,12 @@ from collections.abc import Generator
 from typing import Any
 
 from agno.agent import Agent
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from algo_hands_on.agent_factory import build_agent, build_parser_agent
 from algo_hands_on.config import Settings
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
-from algo_hands_on.schemas import TutorTurn
+from algo_hands_on.schemas import EvaluationResult, TutorTurn
 
 INTERNAL_NARRATION_PATTERNS = [
     re.compile(
@@ -168,6 +168,23 @@ class TutoringService:
         clean = clean.lstrip()
         return clean.rstrip() if strip_right else clean
 
+    @staticmethod
+    def _extract_evaluation_json(text: str) -> dict[str, Any] | None:
+        """Extrai bloco JSON de evaluation entre <!--EVALUATION_START--> e <!--EVALUATION_END-->.
+        
+        Retorna dicionário com campos de evaluation ou None se não encontrado.
+        """
+        pattern = r"<!--EVALUATION_START-->\s*({.*?})\s*<!--EVALUATION_END-->"
+        match = re.search(pattern, text, re.DOTALL)
+        if not match:
+            return None
+        
+        try:
+            json_str = match.group(1)
+            return json.loads(json_str)
+        except (json.JSONDecodeError, IndexError):
+            return None
+
     def _parse_turn(
         self,
         *,
@@ -194,7 +211,29 @@ class TutoringService:
         if turn is None:
             msg = "Agno parser não retornou TutorTurn estruturado."
             raise RuntimeError(msg)
-        turn.message_markdown = tutor_text
+        
+        # Remove blocos de evaluation do texto exibido ao aluno
+        clean_text = re.sub(
+            r"<!--EVALUATION_START-->.*?<!--EVALUATION_END-->\s*",
+            "",
+            tutor_text,
+            flags=re.DOTALL
+        )
+        turn.message_markdown = clean_text.strip()
+        
+        # Se parser não extraiu evaluation, tenta extrair JSON estruturado do tutor_text
+        if turn.evaluation is None:
+            eval_json = self._extract_evaluation_json(tutor_text)
+            if eval_json:
+                try:
+                    # Usar module_id e competency_key do snapshot se não estiverem no JSON
+                    eval_json.setdefault("module_id", turn.module_id or snapshot["current"]["current_module"])
+                    eval_json.setdefault("competency_key", turn.competency_key or "unknown")
+                    turn.evaluation = EvaluationResult.model_validate(eval_json)
+                except ValidationError:
+                    # JSON inválido, ignore e deixa evaluation como None
+                    pass
+        
         return turn
 
     def _finalize_turn(self, turn: TutorTurn, student_id: str, session_id: str, snapshot: dict, run_id: str) -> TutorTurn:
