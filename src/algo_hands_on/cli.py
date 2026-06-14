@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import sys
 import uuid
@@ -31,6 +32,8 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 console = Console()
+
+CHAT_HISTORY_LIMIT = 8
 
 INDEPENDENCE_LABELS: dict[str, str] = {
     "observer": "Observador",
@@ -68,6 +71,16 @@ CONTEXTUAL_PREFIXES: dict[str, str] = {
 
 # ── helpers de renderização ──────────────────────────────────────────────────
 
+def _configure_logging(settings) -> None:
+    level_name = settings.log_level.upper() if settings.debug else "ERROR"
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s", force=True)
+
+    if not settings.debug:
+        for logger_name in ("agno", "httpx", "openai"):
+            logging.getLogger(logger_name).setLevel(logging.ERROR)
+
+
 def _panel(content: Any, title: str = "", border_style: str = "cyan", **kwargs: Any) -> None:
     console.print(Panel(content, title=title, border_style=border_style, **kwargs))
 
@@ -79,6 +92,15 @@ def _markdown_panel(text: str, title: str, border_style: str = "cyan") -> None:
 def _commands_panel(title: str = "Comandos", border_style: str = "cyan") -> None:
     lines = [f"[cyan]{cmd}[/cyan]  {desc}" for cmd, desc in COMMANDS_HELP]
     console.print(Panel("\n".join(lines), title=title, border_style=border_style, padding=(0, 2)))
+
+
+def _input_panel() -> Panel:
+    return Panel(
+        "[bold cyan]Você[/bold cyan]\n[dim]Digite sua mensagem ou um comando. Enter envia.[/dim]",
+        title="Entrada",
+        border_style="bright_blue",
+        padding=(0, 2),
+    )
 
 
 def _student_not_found() -> None:
@@ -137,11 +159,28 @@ def render_home(snapshot: dict, student: dict, session_id: str) -> None:
     ev_parts: list[str] = []
     for kind, label in EVIDENCE_DISPLAY_LABELS.items():
         ev = evidence_dict.get(kind, {"satisfied": 0, "best_score": 0.0})
-        icon = "[green]\u2713[/green]" if ev.get("satisfied") else "[red]\u2717[/red]"
+        icon = "[green]OK[/green]" if ev.get("satisfied") else "[red]X[/red]"
         ev_parts.append(f"{icon} {label}")
-    console.print(Text("Checkpoint:  ", style="bold") + Text("  ".join(ev_parts)))
+    console.print(f"[bold]Checkpoint:[/bold]  {'  '.join(ev_parts)}")
 
     _commands_panel("Comandos", border_style="dim blue")
+
+
+def render_chat_screen(snapshot: dict, student: dict, session_id: str, history: list[tuple[str, str]]) -> None:
+    console.clear()
+    render_home(snapshot, student, session_id)
+
+    if history:
+        lines: list[str] = []
+        for role, text in history[-CHAT_HISTORY_LIMIT:]:
+            label = "[bold cyan]Você[/bold cyan]" if role == "user" else "[bold green]Algo Hands-On[/bold green]"
+            body = text.strip()
+            if len(body) > 1200:
+                body = f"{body[:1200].rstrip()}..."
+            lines.append(f"{label}\n{body}")
+        console.print(Panel("\n\n".join(lines), title="Conversa", border_style="dim", padding=(1, 2)))
+
+    console.print(_input_panel())
 
 
 def render_progress(snapshot: dict) -> None:
@@ -159,7 +198,7 @@ def render_progress(snapshot: dict) -> None:
     table.add_column("Estado")
     table.add_column("Domínio", justify="right")
     for row in snapshot["modules"]:
-        marker = "\u25b6" if row["module_id"] == current["current_module"] else ""
+        marker = ">" if row["module_id"] == current["current_module"] else ""
         table.add_row(
             f"{marker} {row['module_id']}",
             row["title"],
@@ -274,6 +313,20 @@ def _show_turn_extras(turn: TutorTurn) -> None:
         )
 
 
+def _turn_history_text(turn: TutorTurn) -> str:
+    parts = [turn.message_markdown]
+    if turn.exercise:
+        parts.append(f"Exercício: {turn.exercise.title}\n{turn.exercise.statement}")
+    if turn.evaluation:
+        evaluation = turn.evaluation
+        parts.append(
+            "Avaliação: "
+            f"{evaluation.result.value} · nota {evaluation.score:.0%} · "
+            f"competência {evaluation.competency_key}"
+        )
+    return "\n\n".join(parts)
+
+
 # ── streaming ────────────────────────────────────────────────────────────────
 
 def _run_chat_stream(service, student_id: str, session_id: str, message: str) -> TutorTurn:
@@ -360,6 +413,7 @@ def chat(
 ) -> None:
     """Inicia a CLI interativa do tutor."""
     settings, repository = runtime()
+    _configure_logging(settings)
     errors = settings.validate_runtime()
     if errors:
         for error in errors:
@@ -383,11 +437,12 @@ def chat(
     service = TutoringService(settings, repository)
 
     snapshot = repository.get_progress_snapshot(student_id)
-    render_home(snapshot, student, session_id)
+    chat_history: list[tuple[str, str]] = []
+    render_chat_screen(snapshot, student, session_id, chat_history)
 
     while True:
         try:
-            message = Prompt.ask("\n[bold cyan]Você[/bold cyan]").strip()
+            message = Prompt.ask("[bold cyan]Você[/bold cyan]").strip()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Sessão encerrada.[/dim]")
             return
@@ -399,37 +454,44 @@ def chat(
             return
 
         if message == "/limpar":
-            console.clear()
+            chat_history.clear()
             snapshot = repository.get_progress_snapshot(student_id)
-            render_home(snapshot, student, session_id)
+            render_chat_screen(snapshot, student, session_id, chat_history)
             continue
 
         if message == "/progresso":
             render_progress(repository.get_progress_snapshot(student_id))
+            console.print(_input_panel())
             continue
 
         if message == "/checkpoint":
             render_evidence(repository.get_progress_snapshot(student_id))
+            console.print(_input_panel())
             continue
 
         if message == "/modulos":
             show_modules()
+            console.print(_input_panel())
             continue
 
         if message == "/historico":
             render_history(student_id, repository)
+            console.print(_input_panel())
             continue
 
         if message == "/sessoes":
             render_sessions(student_id, repository)
+            console.print(_input_panel())
             continue
 
         if message == "/config":
             render_config(student, settings)
+            console.print(_input_panel())
             continue
 
         if message == "/ajuda":
             _commands_panel("Comandos disponíveis")
+            console.print(_input_panel())
             continue
 
         if message == "/pular":
@@ -459,12 +521,16 @@ def chat(
             continue
 
         try:
+            chat_history.append(("user", message))
             turn = _run_turn_and_display(service, student_id, session_id, final_message, settings.stream)
         except Exception as exc:
             _panel(str(exc), "Falha ao executar o agente", border_style="red")
             continue
 
+        chat_history.append(("assistant", _turn_history_text(turn)))
         _show_turn_extras(turn)
+        snapshot = repository.get_progress_snapshot(student_id)
+        render_chat_screen(snapshot, student, session_id, chat_history)
 
 
 @app.command()
