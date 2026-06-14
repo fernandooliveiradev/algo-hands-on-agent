@@ -488,8 +488,11 @@ class ChatApp(App[None]):
                     message=final_message,
                 ):
                     event_type = event.get("type")
-                    if event_type in {"content", "parsing"}:
+                    if event_type == "content":
                         self.call_from_thread(self._append_assistant_delta, event["text"])
+                    elif event_type == "parsing":
+                        # Evento interno — não exibe texto no chat
+                        pass
                     elif event_type == "warning":
                         self.call_from_thread(self._append_assistant_delta, f"\n[Aviso: {event['text']}]")
                     elif event_type == "final":
