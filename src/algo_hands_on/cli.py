@@ -321,21 +321,26 @@ class ChatApp(App[None]):
 
     # ── escrita no RichLog ────────────────────────────────────────────────
 
+    @staticmethod
+    def _safe(text: str) -> str:
+        """Escapa colchetes para não serem interpretados como markup pelo RichLog."""
+        return text.replace("[", "\\[")
+
     def _write_user(self, message: str) -> None:
-        self._history.write(f"\n[bold #58a6ff]Você:[/] {message}")
+        self._history.write(f"\n[bold #58a6ff]Você:[/] {self._safe(message)}")
 
     def _write_system(self, message: str) -> None:
         self._history.write(f"\n[dim italic]{message}[/]")
 
     def _write_assistant_block(self, text: str) -> None:
         self._history.write("\n[bold #7ee787]Algo Hands-On:[/]")
-        self._history.write(text)
+        self._history.write(self._safe(text))
 
     def _write_streaming_header(self) -> None:
         self._history.write("\n[bold #7ee787]Algo Hands-On:[/] ")
 
     def _append_streaming_text(self, text: str) -> None:
-        self._history.write(text)
+        self._history.write(self._safe(text))
 
     def _write_exercise(self, turn: TutorTurn) -> None:
         if not turn.exercise:
@@ -343,7 +348,7 @@ class ChatApp(App[None]):
         ex = turn.exercise
         constraints = "\n".join(f"  • {c}" for c in ex.constraints) if ex.constraints else ""
         self._history.write(
-            f"\n[yellow]▸ {ex.title}[/]\n{ex.statement}"
+            f"\n[yellow]▸ {self._safe(ex.title)}[/]\n{self._safe(ex.statement)}"
             + (f"\n\n[dim]Regras:[/]\n{constraints}" if constraints else "")
         )
 
