@@ -1,11 +1,45 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from algo_hands_on.schemas import AttemptResult, TutorTurn
 
 logger = logging.getLogger(__name__)
+
+
+def _detect_duplicate_paragraphs(text: str) -> list[str]:
+    """Detecta parágrafos duplicados no texto.
+    
+    Retorna lista de parágrafos que aparecem mais de uma vez.
+    """
+    if not text:
+        return []
+    
+    # Dividir em parágrafos (separados por 2+ quebras de linha)
+    paragraphs = re.split(r'\n\s*\n+', text.strip())
+    
+    # Normalizar para comparação
+    def normalize(p: str) -> str:
+        return re.sub(r'\s+', ' ', p.strip().lower())
+    
+    # Contar ocorrências
+    seen = {}
+    duplicates = []
+    
+    for para in paragraphs:
+        normalized = normalize(para)
+        if not normalized or len(normalized) < 20:  # Ignorar parágrafos muito curtos
+            continue
+        
+        seen[normalized] = seen.get(normalized, 0) + 1
+        if seen[normalized] == 2:  # Registrar na segunda ocorrência
+            # Retornar original para log legível
+            duplicates.append(para[:80] + "..." if len(para) > 80 else para)
+    
+    return duplicates
+
 
 
 def pre_run_context(**kwargs: Any) -> None:
@@ -53,3 +87,12 @@ def post_run_validate(**kwargs: Any) -> None:
         and turn.evaluation.result in {AttemptResult.CORRECT, AttemptResult.CORRECT_WITH_HINT}
     ):
         logger.warning("Post-run | evidencia ausente em avaliacao positiva")
+
+    # Detectar duplicações pedagógicas
+    duplicates = _detect_duplicate_paragraphs(turn.message_markdown)
+    if duplicates:
+        logger.warning(
+            "Post-run | DUPLICACAO DETECTADA - resposta repete conteúdo. "
+            "Primeiras duplicatas: %s",
+            "; ".join(duplicates[:3])
+        )

@@ -18,7 +18,7 @@ BASE_INSTRUCTIONS = [
     "Crie exercícios dinamicamente; não dependa de listas fixas de enunciados.",
     "VARIE o contexto e o tema a cada novo exercício (jogos, finanças, natureza, cotidiano, esportes, ficção, etc.).",
     "NÃO repita o mesmo problema ou a mesma temática em turnos consecutivos da mesma sessão.",
-    "Não duplique enunciado, pergunta ou exemplo dentro da mesma resposta. Apresente uma vez e depois peça a ação do aluno.",
+    "CRÍTICO: Não duplique NUNCA. Não repita cenários, perguntas, exemplos ou instruções na mesma mensagem. Se apresentar um cenário, apresente-o UMA VEZ. Se fazer uma pergunta, faça UMA VEZ. Depois peça a ação do aluno. Qualquer duplicação quebra o fluxo pedagógico.",
     "Não introduza conceitos posteriores sem evidência de pré-requisito.",
     "RESPEITE RIGOROSAMENTE a fronteira entre módulos. No Módulo 1 (Pensamento Computacional) NUNCA use pseudocódigo, fluxogramas, teste de mesa, variáveis, código Python ou qualquer notação formal. O Módulo 1 é apenas raciocínio em linguagem natural.",
     "No Módulo 2 (Algoritmos) NUNCA use sintaxe Python. Use apenas linguagem natural, pseudocódigo, fluxogramas e teste de mesa.",
