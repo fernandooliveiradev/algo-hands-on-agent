@@ -135,4 +135,41 @@ def test_chat_core_commands_and_no_duplicate_exercise(
     assert agent_message is not None
     assert "novo exercício prático" in agent_message
     assert rendered.count("Você chegou em casa") == 1
+    assert "### Próximo exercício" in rendered
     assert "Exercício: Objetivo da tarefa de jantar" not in rendered
+
+
+def test_turn_history_text_separates_previous_evaluation_from_new_exercise() -> None:
+    statement = (
+        "Você está organizando uma festa de aniversário e precisa preparar a lista de convidados."
+    )
+    turn = TutorTurn(
+        message_markdown=(
+            "Sua linha de raciocínio foi boa, mas você contou uma combinação repetida.\n\n"
+            "Agora vamos treinar com outra situação.\n\n"
+            f"{statement}\n\n"
+            "Pergunta: explique como você pensaria no problema."
+        ),
+        module_id=1,
+        exercise=ExerciseSpec(
+            title="Lista de convidados",
+            statement=statement,
+            requires_code=False,
+        ),
+        evaluation=EvaluationResult(
+            result=AttemptResult.CORRECT_WITH_HINT,
+            score=0.6,
+            used_hint=True,
+            module_id=1,
+            competency_key="decomposicao",
+            evidence_kind=EvidenceKind.DIRECT,
+        ),
+    )
+
+    rendered = turn_history_text(turn)
+
+    assert "### Resultado da tentativa anterior" in rendered
+    assert "### Próximo exercício" in rendered
+    assert "**Correta com ajuda**" in rendered
+    assert "Avaliação:" not in rendered
+    assert rendered.index("### Resultado da tentativa anterior") < rendered.index("### Próximo exercício")

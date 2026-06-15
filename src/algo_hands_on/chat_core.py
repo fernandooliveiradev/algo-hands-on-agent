@@ -7,7 +7,7 @@ from typing import Any, Literal
 from algo_hands_on import __version__
 from algo_hands_on.curriculum import LAST_MODULE_ID, MODULES, get_module
 from algo_hands_on.db.repository import ProgressRepository
-from algo_hands_on.schemas import EVIDENCE_DISPLAY_LABELS, TutorTurn
+from algo_hands_on.schemas import EVIDENCE_DISPLAY_LABELS, AttemptResult, ExerciseSpec, TutorTurn
 
 UNDEFINED_COMPETENCY = "não definida"
 
@@ -246,15 +246,92 @@ def _contains_rendered_block(message: str, block: str) -> bool:
     return normalized_block in normalized_message
 
 
-def turn_history_text(turn: TutorTurn) -> str:
-    parts = [turn.message_markdown]
-    if turn.exercise and not _contains_rendered_block(turn.message_markdown, turn.exercise.statement):
-        parts.append(f"Exercício: {turn.exercise.title}\n{turn.exercise.statement}")
-    if turn.evaluation:
-        evaluation = turn.evaluation
-        parts.append(
-            "Avaliação: "
-            f"{evaluation.result.value} · nota {evaluation.score:.0%} · "
-            f"competência {evaluation.competency_key}"
-        )
+def _exercise_anchor(exercise: ExerciseSpec) -> str | None:
+    for line in exercise.statement.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return exercise.title.strip() or None
+
+
+def _split_feedback_and_exercise(message: str, exercise: ExerciseSpec | None) -> tuple[str, str | None]:
+    if exercise is None:
+        return message.strip(), None
+
+    candidates = [exercise.title.strip()]
+    anchor = _exercise_anchor(exercise)
+    if anchor:
+        candidates.append(anchor)
+
+    split_at: int | None = None
+    for candidate in candidates:
+        if not candidate:
+            continue
+        index = message.find(candidate)
+        if index >= 0 and (split_at is None or index < split_at):
+            split_at = index
+
+    if split_at is None:
+        return message.strip(), None
+
+    feedback = message[:split_at].strip()
+    exercise_text = message[split_at:].strip()
+    return feedback, exercise_text or None
+
+
+def _format_evaluation_label(result: AttemptResult) -> str:
+    labels = {
+        AttemptResult.CORRECT: "Correta",
+        AttemptResult.CORRECT_WITH_HINT: "Correta com ajuda",
+        AttemptResult.INCORRECT: "Incorreta",
+        AttemptResult.INCOMPLETE: "Incompleta",
+        AttemptResult.NOT_EVALUATED: "Sem avaliação",
+    }
+    return labels[result]
+
+
+def _format_evaluation_section(turn: TutorTurn, feedback_text: str) -> str:
+    assert turn.evaluation is not None
+    evaluation = turn.evaluation
+    summary = (
+        f"**{_format_evaluation_label(evaluation.result)}**"
+        f"  • nota {evaluation.score:.0%}"
+    )
+    if evaluation.evidence_kind is not None:
+        summary += f"  • evidência {evaluation.evidence_kind.display_label.lower()}"
+
+    parts = ["### Resultado da tentativa anterior", summary]
+    if feedback_text:
+        parts.append(feedback_text)
     return "\n\n".join(parts)
+
+
+def _format_exercise_section(turn: TutorTurn, exercise_text: str | None) -> str:
+    assert turn.exercise is not None
+    body = exercise_text or f"**{turn.exercise.title}**\n\n{turn.exercise.statement}"
+    return "\n\n".join(
+        [
+            "### Próximo exercício",
+            body,
+        ]
+    )
+
+
+def turn_history_text(turn: TutorTurn) -> str:
+    feedback_text, embedded_exercise_text = _split_feedback_and_exercise(turn.message_markdown, turn.exercise)
+    parts: list[str] = []
+
+    if turn.evaluation:
+        parts.append(_format_evaluation_section(turn, feedback_text))
+    elif feedback_text:
+        parts.append(feedback_text)
+
+    if turn.exercise:
+        exercise_text = embedded_exercise_text
+        if exercise_text is None and not _contains_rendered_block(turn.message_markdown, turn.exercise.statement):
+            exercise_text = f"**{turn.exercise.title}**\n\n{turn.exercise.statement}"
+        parts.append(_format_exercise_section(turn, exercise_text))
+    elif not parts:
+        parts.append(turn.message_markdown)
+
+    return "\n\n".join(part for part in parts if part.strip())
