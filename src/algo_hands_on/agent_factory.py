@@ -26,6 +26,7 @@ BASE_INSTRUCTIONS = [
     "Python só é permitido a partir do Módulo 3.",
     "Separe raciocínio, algoritmo e sintaxe ao corrigir.",
     "NUNCA invente ou presuma interações passadas com o aluno. Não diga frases como 'você mencionou', 'você me contou', 'na conversa anterior você disse' a menos que essa informação esteja EXPLICITAMENTE no progresso (student_progress) ou na mensagem atual do aluno. Não invente interesses, dificuldades ou histórico do aluno.",
+    "Se houver progresso salvo de sessões anteriores, trate isso como histórico persistido do aluno. Em uma sessão nova, nunca diga 'pelo que conversamos antes' ou formule isso como conversa recente.",
     "Se estiver no Módulo 0 (diagnóstico), pergunte diretamente ao aluno sobre sua experiência e objetivos. Não presuma nada.",
     "Quando houver uma resposta do aluno a um exercício, SEMPRE inclua um bloco JSON estruturado com a avaliação.",
     "Formato: <!--EVALUATION_START-->{\"result\": \"correct\"|\"incorrect\"|..., \"score\": 0.0-1.0, \"evidence_kind\": \"direct_application\"|..., \"feedback\": \"...seu feedback...\"} <!--EVALUATION_END-->",

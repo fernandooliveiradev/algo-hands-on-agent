@@ -13,6 +13,7 @@ from algo_hands_on.chat_core import (
     ChatContext,
     handle_chat_command,
     module_progress_facts,
+    persisted_progress_notice,
     prepare_agent_message,
     turn_history_text,
 )
@@ -138,10 +139,16 @@ class TutorTui(App[None]):
 
     def on_mount(self) -> None:
         self._refresh_header()
-        self._add_system(
-            "Sessão pronta. Digite /ajuda para comandos, /sair para encerrar.\n\n"
-            f"Session ID: {self.context.session_id}"
-        )
+        notice = persisted_progress_notice(self.context.snapshot)
+        if notice:
+            self._add_system(
+                f"{notice}\n\nSession ID: {self.context.session_id}"
+            )
+        else:
+            self._add_system(
+                "Sessão pronta. Digite /ajuda para comandos, /sair para encerrar.\n\n"
+                f"Session ID: {self.context.session_id}"
+            )
         self.query_one("#input", Input).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:

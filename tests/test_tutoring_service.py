@@ -11,9 +11,11 @@ class AgentStub:
     def __init__(self, *, chunks: Iterable[str] = (), plain: str | None = None) -> None:
         self.chunks = list(chunks)
         self.plain = plain
+        self.last_kwargs = None
 
     def run(self, input_message, **kwargs):
         assert input_message == "oi"
+        self.last_kwargs = kwargs
         if self.plain is not None:
             return SimpleNamespace(content=self.plain, run_id="run-plain")
 
@@ -31,12 +33,14 @@ class ParserStub:
     def __init__(self, *, fail: bool = False, content: object | None = None) -> None:
         self.fail = fail
         self.content = content
+        self.last_kwargs = None
 
     def run(self, input_message, **kwargs):
         if self.fail:
             raise RuntimeError("parser caiu")
         assert "Resposta do tutor:\n" in input_message
         assert kwargs["add_dependencies_to_context"] is True
+        self.last_kwargs = kwargs
         content = self.content
         if content is None:
             content = TutorTurn(message_markdown="texto parser", module_id=0)
@@ -320,3 +324,30 @@ def test_parse_turn_accepts_json_string_content(
 
     assert turn.message_markdown == "Texto"
     assert turn.module_id == 0
+
+
+def test_agno_user_id_is_scoped_by_session(
+    monkeypatch,
+    repository: ProgressRepository,
+    tmp_path,
+) -> None:
+    agent = AgentStub(plain="Resposta bruta.")
+    parser = ParserStub(content=TutorTurn(message_markdown="texto parser", module_id=0))
+    service = make_service(
+        monkeypatch,
+        repository,
+        tmp_path,
+        agent,
+        parser,
+    )
+
+    service.run_turn(
+        student_id="fernando",
+        session_id="sessao-nova",
+        message="oi",
+    )
+
+    assert agent.last_kwargs is not None
+    assert parser.last_kwargs is not None
+    assert agent.last_kwargs["user_id"] == "fernando::sessao-nova"
+    assert parser.last_kwargs["user_id"] == "fernando::sessao-nova"

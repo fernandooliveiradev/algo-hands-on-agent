@@ -77,8 +77,14 @@ class TutoringService:
                 "module_passing_average": self.repository.MODULE_PASSING_SCORE,
                 "required_evidence": list(self.repository.REQUIRED_EVIDENCE),
                 "module_advances_when": "average >= 0.7 with all five evidence categories covered",
+                "cross_session_source_of_truth": "sqlite student progress",
             },
         }
+
+    @staticmethod
+    def _agent_user_id(student_id: str, session_id: str) -> str:
+        """Mantém memória Agno isolada por sessão; o histórico global vive no SQLite do AHO."""
+        return f"{student_id}::{session_id}"
 
     def _guard_module_id(self, turn: TutorTurn, snapshot: dict) -> TutorTurn:
         current_module = snapshot["current"]["current_module"]
@@ -283,7 +289,7 @@ class TutoringService:
         try:
             run = self.parser_agent.run(
                 parser_input,
-                user_id=student_id,
+                user_id=self._agent_user_id(student_id, session_id),
                 session_id=f"{session_id}:parser",
                 dependencies=self._build_dependencies(student_id),
                 add_dependencies_to_context=True,
@@ -331,7 +337,7 @@ class TutoringService:
 
         run = self.agent.run(
             message,
-            user_id=student_id,
+            user_id=self._agent_user_id(student_id, session_id),
             session_id=session_id,
             dependencies=self._build_dependencies(student_id),
             add_dependencies_to_context=True,
@@ -355,7 +361,7 @@ class TutoringService:
 
         run_stream = self.agent.run(
             message,
-            user_id=student_id,
+            user_id=self._agent_user_id(student_id, session_id),
             session_id=session_id,
             dependencies=self._build_dependencies(student_id),
             add_dependencies_to_context=True,

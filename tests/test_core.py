@@ -6,6 +6,7 @@ from algo_hands_on.agent_factory import BASE_INSTRUCTIONS, build_agent, build_pa
 from algo_hands_on.chat_core import (
     ChatContext,
     handle_chat_command,
+    persisted_progress_notice,
     prepare_agent_message,
     turn_history_text,
 )
@@ -175,3 +176,45 @@ def test_turn_history_text_separates_previous_evaluation_from_new_exercise() -> 
     assert "**Correta com ajuda**" in rendered
     assert "Avaliação:" not in rendered
     assert rendered.index("### Resultado da tentativa anterior") < rendered.index("### Próximo exercício")
+
+
+def test_persisted_progress_notice_explains_loaded_database_state(
+    repository: ProgressRepository,
+    tmp_path,
+) -> None:
+    settings = Settings(
+        **{
+            "_env_file": None,
+            "deepseek_api_key": "test",
+            "db_path": tmp_path / "aho.db",
+        },
+    )
+    repository.create_student("fernando", "Fernando")
+    repository.record_evaluation(
+        student_id="fernando",
+        session_id="sessao-antiga",
+        evaluation=EvaluationResult(
+            result=AttemptResult.CORRECT,
+            score=0.7,
+            used_hint=False,
+            module_id=0,
+            competency_key="objetivo-de-aprendizagem",
+            evidence_kind=EvidenceKind.DIAGNOSIS,
+        ),
+    )
+
+    context = ChatContext(
+        settings=settings,
+        repository=repository,
+        student=repository.get_student("fernando"),
+        student_id="fernando",
+        session_id="sessao-nova",
+        snapshot=repository.get_progress_snapshot("fernando"),
+    )
+
+    notice = persisted_progress_notice(context.snapshot)
+
+    assert notice is not None
+    assert "carregado do banco de dados" in notice
+    assert "Média salva no módulo atual: 14%" in notice
+    assert "Cobertura salva: 1/5 evidências" in notice

@@ -230,6 +230,11 @@ O aluno vê uma regra simples:
 - a média final do módulo é a média dessas 5 melhores notas;
 - o avanço acontece quando a cobertura chega a `5/5` evidências e a média final fica em `70%` ou mais.
 
+Entre sessões, a fonte de verdade é o SQLite do AHO. Quando uma nova sessão
+começa, a interface carrega o progresso salvo no banco e mostra isso
+explicitamente ao aluno. A memória do agente, quando ativada, fica isolada à
+sessão atual e não deve substituir o histórico pedagógico persistido.
+
 Exemplo:
 
 - se o aluno cobriu 3 evidências com notas `80`, `70` e `60`, a cobertura ainda é `3/5`, então o módulo não avança;

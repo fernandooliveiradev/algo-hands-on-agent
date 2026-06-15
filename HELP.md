@@ -107,7 +107,7 @@ uv run aho export --student-id maria --output progress-export-maria.json
 ```
 
 ### `aho doctor`
-Valida ambiente: Python, chave API, banco SQLite, skills, streaming, resumos, memória.
+Valida ambiente: Python, chave API, banco SQLite, skills, streaming, resumos e memória da sessão.
 
 ```bash
 uv run aho doctor
@@ -134,7 +134,7 @@ Ao executar `aho chat`, você entra em uma conversa interativa com o tutor. A te
 | `/modulos` | Lista os 17 módulos da trilha |
 | `/historico` | Últimas 10 tentativas com resultado, nota, e data |
 | `/sessoes` | Sessões anteriores do aluno (ID, mensagens, última atividade) |
-| `/config` | Configuração atual: streaming, resumos, memória, modelo |
+| `/config` | Configuração atual: streaming, resumos, memória da sessão, modelo |
 | `/ajuda` | Lista completa de comandos disponíveis |
 | `/limpar` | Limpa a tela e reexibe a tela inicial |
 | `/sair` | Encerra a sessão (progresso é salvo automaticamente) |
@@ -159,6 +159,7 @@ Ao abrir o chat, você vê um cabeçalho fixo com aluno, sessão, módulo atual,
 - **Cobertura**: mostra quantas das 5 evidências já foram avaliadas.
 - **Meta de avanço**: o módulo avança com cobertura `5/5` e média final `>= 70%`.
 - **Nível**: Observador → Guiado → Independente → Transferência. Avança automaticamente ao dominar módulos.
+- **Aviso de progresso salvo**: ao iniciar uma nova sessão, a interface informa quando carregou progresso anterior diretamente do banco.
 
 ## Checkpoint e evidências
 
@@ -237,7 +238,7 @@ Todas as variáveis de ambiente em `.env`:
 | `AHO_SKILLS_DIR` | `./skills` | Diretório das skills |
 | `AHO_HISTORY_RUNS` | `3` | Mensagens mantidas em contexto |
 | `AHO_SESSION_SUMMARIES` | `true` | Resumos automáticos de conversas longas |
-| `AHO_MEMORY` | `true` | Memória de preferências do aluno |
+| `AHO_MEMORY` | `true` | Memória isolada por sessão; não substitui o progresso salvo no SQLite |
 | `AHO_STREAM` | `true` | Streaming de resposta |
 | `AHO_DEBUG` | `false` | Logs detalhados (ativo = mais verboso) |
 | `AHO_HOST` | `127.0.0.1` | Host da API |

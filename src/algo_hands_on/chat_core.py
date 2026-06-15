@@ -170,6 +170,25 @@ def module_progress_facts(snapshot: dict) -> dict[str, float | int | str | bool]
     }
 
 
+def persisted_progress_notice(snapshot: dict) -> str | None:
+    facts = module_progress_facts(snapshot)
+    attempts = snapshot.get("recent_attempts", [])
+    if facts["coverage"] == 0 and not attempts:
+        return None
+
+    latest_attempt = attempts[0] if attempts else None
+    latest_when = ""
+    if latest_attempt and latest_attempt.get("created_at"):
+        latest_when = f"\nÚltima avaliação salva: {str(latest_attempt['created_at'])[:16]}"
+
+    return (
+        "Nova sessão iniciada. Seu progresso anterior foi carregado do banco de dados.\n\n"
+        f"Média salva no módulo atual: {facts['average'] * 100:.0f}%\n"
+        f"Cobertura salva: {facts['coverage']}/{facts['total']} evidências{latest_when}\n\n"
+        "Se quiser recomeçar do zero, reinicie o progresso no menu principal."
+    )
+
+
 def plain_progress(snapshot: dict) -> str:
     current = snapshot["current"]
     facts = module_progress_facts(snapshot)
@@ -257,7 +276,7 @@ def plain_config(student: dict, settings: Any) -> str:
         ("Nome", student["display_name"]),
         ("Streaming", "ativado" if settings.stream else "desativado"),
         ("Resumos", "ativado" if settings.session_summaries else "desativado"),
-        ("Memória", "ativada" if settings.memory else "desativada"),
+        ("Memória da sessão", "ativada" if settings.memory else "desativada"),
         ("Runs em histórico", str(settings.history_runs)),
         ("Modelo", settings.deepseek_model),
     ]

@@ -468,7 +468,7 @@ def doctor() -> None:
 
     rows.append(("Streaming Agno", True, "ativado" if settings.stream else "desativado"))
     rows.append(("Resumos", True, "ativado" if settings.session_summaries else "desativado"))
-    rows.append(("Memória", True, "ativada" if settings.memory else "desativada"))
+    rows.append(("Memória da sessão", True, "ativada" if settings.memory else "desativada"))
 
     console.print(plain_doctor(rows))
     if not all(ok for _, ok, _ in rows):
