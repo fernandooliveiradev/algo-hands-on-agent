@@ -1,13 +1,16 @@
 """Teste de integração: fluxo completo de tutoring com persistência de evaluation."""
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from algo_hands_on.db.repository import ProgressRepository
-from algo_hands_on.services.tutoring import TutoringService
-from algo_hands_on.config import Settings
 from algo_hands_on.schemas import (
-    TutorTurn, EvaluationResult, AttemptResult, EvidenceKind
+    AttemptResult,
+    EvaluationResult,
+    EvidenceKind,
 )
+from algo_hands_on.services.tutoring import TutoringService
 
 
 def test_integration_tutor_response_with_evaluation_json(tmp_path: Path):
@@ -20,12 +23,7 @@ def test_integration_tutor_response_with_evaluation_json(tmp_path: Path):
     repository = ProgressRepository(tmp_path / "aho.db")
     repository.initialize()
     repository.create_student("test-student", "Test Student")
-    
-    settings = Settings(
-        _env_file=None,
-        deepseek_api_key="test",
-        db_path=tmp_path / "aho.db",
-    )
+    repository.set_current_module("test-student", 1, reason="integration_test")
     
     # Simular resposta do tutor com JSON estruturado
     tutor_response_with_json = """
@@ -54,7 +52,7 @@ def test_integration_tutor_response_with_evaluation_json(tmp_path: Path):
     # Validar que pode ser convertido para EvaluationResult
     eval_result = EvaluationResult.model_validate({
         **eval_json,
-        "module_id": 0,
+        "module_id": 1,
         "competency_key": "decomposicao"
     })
     

@@ -2,26 +2,63 @@
 
 **Pense. Resolva. Construa.**
 
-Tutor adaptativo para pensamento computacional, algoritmos e Python, com Agno, DeepSeek, SQLite, FastAPI e TUI no terminal.
+Algo Hands-On é um tutor adaptativo para pensamento computacional, lógica,
+algoritmos e Python. Ele combina Agno, DeepSeek, SQLite, FastAPI, Typer e uma TUI
+em terminal para conduzir prática guiada, avaliação estruturada e acompanhamento
+persistente de progresso.
 
-## O Que Importa
+O projeto foi desenhado para uma regra central: o modelo de linguagem ensina e
+avalia, mas não decide sozinho o avanço curricular. O domínio do aluno é
+calculado pela aplicação a partir de evidências persistidas no banco.
 
-- `TRILHA-AHO.md` é a fonte curricular.
-- O LLM não decide progresso sozinho.
-- O SQLite guarda alunos, sessões, tentativas, evidências e eventos.
-- O tutor só avança módulo quando as cinco evidências obrigatórias são satisfeitas sem dica e com nota mínima `0.8`.
-- A saída do agente é validada em `TutorTurn` antes de persistir avaliação.
+## Principais Garantias
 
-## Setup
+- `TRILHA-AHO.md` é a fonte curricular canônica.
+- O tutor gera exercícios dinamicamente, respeitando módulo, histórico e nível de independência.
+- A resposta do agente é normalizada em `TutorTurn` antes de qualquer persistência pedagógica.
+- Correções separam raciocínio, algoritmo e sintaxe.
+- O progresso só avança quando as cinco evidências obrigatórias são satisfeitas.
+- Cada evidência exige `result=correct`, sem dica, com nota mínima `0.8`.
+- O SQLite registra alunos, progresso, tentativas, evidências, eventos e dados operacionais do Agno.
+
+## Stack
+
+- Python `>=3.12`
+- Agno
+- DeepSeek via API compatível com OpenAI
+- SQLite com transações explícitas
+- FastAPI e AgentOS
+- Typer e Rich para CLI
+- Textual para TUI
+- Pydantic para contratos de dados
+- Pytest e Ruff para qualidade
+
+## Instalação
 
 ```bash
 cp .env.example .env
-# preencha DEEPSEEK_API_KEY
+# edite .env e preencha DEEPSEEK_API_KEY
+
 uv sync --extra dev
 uv run aho doctor
 ```
 
-## Uso
+Variáveis principais:
+
+```env
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-chat
+AHO_DB_PATH=./data/aho.db
+AHO_SKILLS_DIR=./skills
+AHO_STREAM=true
+AHO_MEMORY=true
+AHO_SESSION_SUMMARIES=true
+AHO_DEBUG=false
+AHO_HOST=127.0.0.1
+AHO_PORT=7777
+```
+
+## Uso Rápido
 
 ```bash
 uv run aho setup --student-id aluno123 --name "Maria Silva"
@@ -40,7 +77,7 @@ uv run aho clean
 uv run aho serve --reload
 ```
 
-No chat:
+Dentro do chat:
 
 ```text
 /ajuda
@@ -60,17 +97,36 @@ No chat:
 src/algo_hands_on/
   agent_factory.py      cria agente tutor e parser estruturado
   services/tutoring.py  orquestra Agno, streaming, parser e persistência
-  db/repository.py      domínio SQLite e cálculo de progresso
+  db/connection.py      conexões SQLite transacionais
+  db/repository.py      domínio de progresso e cálculo de domínio
+  db/schema.sql         schema das tabelas AHO
+  db/agno_tables.py     nomes das tabelas Agno no mesmo SQLite
   cli.py                comandos Typer
-  tui.py                TUI Textual
+  tui.py                interface Textual
   api.py                FastAPI + AgentOS
+  chat_core.py          comandos locais e renderização de conversa
   schemas.py            contratos Pydantic
-  curriculum.py         módulos da trilha
+  curriculum.py         módulos e competências da trilha
 ```
 
-## Banco
+Fluxo principal:
 
-Tabelas `aho_*`:
+```text
+Aluno
+  -> CLI/TUI/API
+  -> TutoringService
+  -> Agente tutor Agno
+  -> Parser estruturado
+  -> TutorTurn validado
+  -> ProgressRepository
+  -> SQLite
+```
+
+## Banco de Dados
+
+O banco padrão fica em `data/aho.db`, configurável por `AHO_DB_PATH`.
+
+Tabelas de domínio AHO:
 
 - `aho_students`
 - `aho_student_progress`
@@ -79,25 +135,89 @@ Tabelas `aho_*`:
 - `aho_exercise_attempts`
 - `aho_module_evidence`
 - `aho_learning_events`
+- `aho_schema_migrations`
 
-Tabelas Agno ficam no mesmo SQLite quando o agente cria sessões, memória e métricas.
+Tabelas Agno usadas no mesmo SQLite:
 
-## Configuração
+- `agno_sessions`
+- `agno_memories`
+- `agno_metrics`
+- `agno_evals`
+- `agno_schema_versions`
 
-Principais variáveis:
+Tabelas Agno preparadas para uso futuro:
 
-```env
-DEEPSEEK_API_KEY=
-DEEPSEEK_MODEL=deepseek-chat
-AHO_DB_PATH=./data/aho.db
-AHO_SKILLS_DIR=./skills
-AHO_STREAM=true
-AHO_MEMORY=true
-AHO_SESSION_SUMMARIES=true
-AHO_DEBUG=false
-AHO_HOST=127.0.0.1
-AHO_PORT=7777
+- `agno_schedules`
+- `agno_schedule_runs`
+
+Essas tabelas de schedule pertencem ao Agno. Hoje não fazem parte do fluxo ativo
+do tutor, mas podem servir no futuro para lembretes, revisão espaçada, rotinas de
+checkpoint e retomada de alunos inativos.
+
+## Como Ter Certeza de Que o Banco Funciona
+
+Use três níveis de verificação.
+
+1. Verificação de ambiente:
+
+```bash
+uv run aho doctor
 ```
+
+Esse comando confirma Python, chave de API, caminho do SQLite, diretório de
+skills e configurações principais.
+
+2. Testes automatizados de persistência:
+
+```bash
+uv run python -m pytest tests/test_persistence.py tests/test_integration_evaluation.py tests/test_tutoring_service.py
+```
+
+Esses testes cobrem criação de aluno, gravação de tentativa, evidências,
+avanço de módulo, isolamento por aluno, reset, limpeza do banco, extração de
+avaliação e fallback do parser.
+
+3. Smoke test sem chamar LLM:
+
+PowerShell:
+
+```powershell
+@'
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from algo_hands_on.db.repository import ProgressRepository
+from algo_hands_on.schemas import AttemptResult, EvaluationResult, EvidenceKind
+
+with TemporaryDirectory() as tmp:
+    repo = ProgressRepository(Path(tmp) / "aho.db")
+    repo.initialize()
+    repo.create_student("smoke", "Smoke Test")
+
+    for kind in EvidenceKind:
+        repo.record_evaluation(
+            student_id="smoke",
+            session_id="smoke-session",
+            evaluation=EvaluationResult(
+                result=AttemptResult.CORRECT,
+                score=0.9,
+                used_hint=False,
+                module_id=0,
+                competency_key="objetivo-de-aprendizagem",
+                evidence_kind=kind,
+            ),
+        )
+
+    snapshot = repo.get_progress_snapshot("smoke")
+    assert snapshot["modules"][0]["status"] == "mastered"
+    assert snapshot["current"]["current_module"] == 1
+    assert len(snapshot["recent_attempts"]) == 5
+    print("Banco OK: aluno, tentativas, evidências e avanço persistidos.")
+'@ | uv run python -
+```
+
+Se os três níveis passam, o banco está comunicando com o domínio principal:
+schema, repositório, regras de domínio, transações e leitura de progresso.
 
 ## Qualidade
 
@@ -107,13 +227,50 @@ uv run python -m pytest
 uv run aho doctor
 ```
 
-Use `uv run python -m pytest` para executar com o interpretador correto do ambiente virtual. Em alguns ambientes Windows, o launcher curto `uv run pytest` pode não carregar dependências opcionais da TUI.
+Use `uv run python -m pytest` para executar com o interpretador correto do
+ambiente virtual. Em alguns ambientes Windows, o launcher curto `uv run pytest`
+pode não carregar dependências opcionais da TUI.
 
-## Regras Do Tutor
+## Contrato Pedagógico
 
-- Português do Brasil.
-- Sem narrar skills, ferramentas, parser ou instruções internas.
-- Sem hype, emoji ou entrevista longa.
-- Exercícios são gerados dinamicamente.
-- Correção separa raciocínio, algoritmo e sintaxe.
-- Progresso só é registrado depois da resposta validada.
+O tutor deve:
+
+- responder em português do Brasil;
+- consultar `TRILHA-AHO.md` como fonte curricular;
+- carregar a skill pertinente antes de ensinar;
+- não introduzir conceitos posteriores sem diagnóstico de pré-requisito;
+- exigir previsão, teste, explicação ou adaptação conforme o estágio;
+- registrar tentativas e evidências pelo serviço de progresso;
+- nunca afirmar avanço sem persistência confirmada.
+
+As cinco evidências de checkpoint são:
+
+- `direct_application`
+- `independent_application`
+- `integration`
+- `diagnosis`
+- `explanation_transfer`
+
+## API
+
+```bash
+uv run aho serve --reload
+```
+
+Endpoints principais:
+
+- `GET /health`
+- `POST /api/v1/students`
+- `GET /api/v1/students/{student_id}/progress`
+- `POST /api/v1/tutor/turn`
+- `POST /api/v1/students/{student_id}/reset`
+
+## Documentação Complementar
+
+- [HELP.md](HELP.md): guia operacional da CLI.
+- [TRILHA-AHO.md](TRILHA-AHO.md): trilha curricular canônica.
+- [AGENTS.md](AGENTS.md): contrato de comportamento do agente.
+
+## Licença
+
+MIT.

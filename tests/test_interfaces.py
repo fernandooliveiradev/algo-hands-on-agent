@@ -25,9 +25,11 @@ async def _assert_tui_input_fits_bottom_composer(
     from algo_hands_on.tui import TutorTui
 
     settings = Settings(
-        _env_file=None,  # type: ignore[call-arg]
-        deepseek_api_key="test",
-        db_path=tmp_path / "aho.db",
+        **{
+            "_env_file": None,
+            "deepseek_api_key": "test",
+            "db_path": tmp_path / "aho.db",
+        },
     )
     student = repository.create_student("fernando", "Fernando")
     app = TutorTui(
@@ -71,9 +73,11 @@ async def _assert_tui_assistant_message_uses_markdown_renderer(
     from algo_hands_on.tui import TutorTui
 
     settings = Settings(
-        _env_file=None,  # type: ignore[call-arg]
-        deepseek_api_key="test",
-        db_path=tmp_path / "aho.db",
+        **{
+            "_env_file": None,
+            "deepseek_api_key": "test",
+            "db_path": tmp_path / "aho.db",
+        },
     )
     student = repository.create_student("maria", "Maria")
     app = TutorTui(

@@ -10,7 +10,7 @@ from algo_hands_on.agent_factory import build_agent
 from algo_hands_on.config import get_settings
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
 from algo_hands_on.schemas import HealthResponse, StudentCreate, TutorRequest, TutorTurn
-from algo_hands_on.services.tutoring import TutoringService
+from algo_hands_on.services.tutoring import AGENT_OPERATIONAL_ERRORS, TutoringService
 
 settings = get_settings()
 repository = ProgressRepository(settings.db_path)
@@ -53,7 +53,7 @@ def tutor_turn(payload: TutorRequest) -> TutorTurn:
         )
     except StudentNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Aluno não encontrado") from exc
-    except Exception as exc:
+    except AGENT_OPERATIONAL_ERRORS as exc:
         logger.exception("Falha ao executar tutor")
         detail = f"Falha ao executar o tutor: {exc}" if settings.debug else "Falha ao executar o tutor."
         raise HTTPException(status_code=502, detail=detail) from exc

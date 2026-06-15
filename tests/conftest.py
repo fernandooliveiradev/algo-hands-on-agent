@@ -29,7 +29,7 @@ def make_evaluation() -> Callable[..., EvaluationResult]:
             score=score,
             used_hint=used_hint,
             module_id=module_id,
-            competency_key="diagnostico-inicial",
+            competency_key="objetivo-de-aprendizagem",
             evidence_kind=kind,
             concepts_demonstrated=["raciocinio"],
             feedback="Bom trabalho.",

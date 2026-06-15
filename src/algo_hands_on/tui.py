@@ -17,7 +17,7 @@ from algo_hands_on.chat_core import (
     turn_history_text,
 )
 from algo_hands_on.db.repository import ProgressRepository
-from algo_hands_on.services.tutoring import TutoringService
+from algo_hands_on.services.tutoring import AGENT_OPERATIONAL_ERRORS, TutoringService
 
 
 class TutorTui(App[None]):
@@ -231,7 +231,7 @@ class TutorTui(App[None]):
                     message=agent_message,
                 )
                 self.call_from_thread(self._update_message, assistant, turn_history_text(turn))
-        except Exception as exc:
+        except AGENT_OPERATIONAL_ERRORS as exc:
             self.call_from_thread(self._update_message, assistant, f"Erro ao executar o agente: {exc}")
         finally:
             self.call_from_thread(self.context.refresh)

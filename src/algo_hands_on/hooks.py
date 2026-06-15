@@ -4,6 +4,8 @@ import logging
 import re
 from typing import Any
 
+from pydantic import ValidationError
+
 from algo_hands_on.schemas import AttemptResult, TutorTurn
 
 logger = logging.getLogger(__name__)
@@ -66,7 +68,7 @@ def post_run_validate(**kwargs: Any) -> None:
     elif isinstance(content, dict):
         try:
             turn = TutorTurn.model_validate(content)
-        except Exception:
+        except ValidationError:
             logger.warning("Post-run | falha ao validar TutorTurn")
             return
 

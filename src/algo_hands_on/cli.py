@@ -22,7 +22,7 @@ from algo_hands_on.chat_core import (
 from algo_hands_on.config import get_settings
 from algo_hands_on.curriculum import get_module
 from algo_hands_on.db.repository import ProgressRepository, StudentNotFoundError
-from algo_hands_on.services.tutoring import TutoringService
+from algo_hands_on.services.tutoring import AGENT_OPERATIONAL_ERRORS, TutoringService
 
 app = typer.Typer(
     name="aho",
@@ -91,7 +91,7 @@ def _run_pipe_chat(
                 turn = service.run_turn(student_id=student_id, session_id=session_id, message=final_message)
                 console.print("Algo Hands-On")
                 console.print(turn_history_text(turn))
-        except Exception as exc:
+        except AGENT_OPERATIONAL_ERRORS as exc:
             console.print(f"Falha ao executar o agente: {exc}")
 
 
@@ -463,7 +463,7 @@ def doctor() -> None:
         from agno.skills import LocalSkills, Skills
         Skills(loaders=[LocalSkills(str(settings.skills_dir))])
         rows.append(("Validação Agno Skills", True, "ok"))
-    except Exception as exc:
+    except (ImportError, RuntimeError, ValueError, OSError) as exc:
         rows.append(("Validação Agno Skills", False, str(exc)))
 
     rows.append(("Streaming Agno", True, "ativado" if settings.stream else "desativado"))

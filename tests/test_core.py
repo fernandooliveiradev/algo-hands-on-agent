@@ -11,6 +11,7 @@ from algo_hands_on.chat_core import (
 )
 from algo_hands_on.config import Settings
 from algo_hands_on.curriculum import MODULES, get_module, next_module_id
+from algo_hands_on.db.agno_tables import AGNO_TABLE_NAMES
 from algo_hands_on.db.repository import ProgressRepository
 from algo_hands_on.hooks import post_run_validate, pre_run_context
 from algo_hands_on.schemas import (
@@ -23,7 +24,7 @@ from algo_hands_on.schemas import (
 
 
 def test_settings_curriculum_and_schema_defaults() -> None:
-    settings = Settings(_env_file=None, deepseek_api_key="test")  # type: ignore[call-arg]
+    settings = Settings(**{"_env_file": None, "deepseek_api_key": "test"})
     turn = TutorTurn(message_markdown="Continue.", module_id=1, competency_key="Teste De Mesa")
 
     assert settings.history_runs == 3
@@ -38,10 +39,12 @@ def test_settings_curriculum_and_schema_defaults() -> None:
 
 def test_agent_contracts(tmp_path) -> None:
     settings = Settings(
-        _env_file=None,  # type: ignore[call-arg]
-        deepseek_api_key="test",
-        db_path=tmp_path / "aho.db",
-        stream=True,
+        **{
+            "_env_file": None,
+            "deepseek_api_key": "test",
+            "db_path": tmp_path / "aho.db",
+            "stream": True,
+        },
     )
     tutor = build_agent(settings)
     parser = build_parser_agent(settings)
@@ -49,6 +52,9 @@ def test_agent_contracts(tmp_path) -> None:
 
     assert tutor.output_schema is None
     assert tutor.parser_model is None
+    assert tutor.db is not None
+    assert tutor.db.session_table_name == AGNO_TABLE_NAMES["session_table"]
+    assert tutor.db.schedules_table_name == AGNO_TABLE_NAMES["schedules_table"]
     assert parser.output_schema is not None
     assert parser.use_json_mode is True
     assert "nunca narre ações internas" in instructions
@@ -89,9 +95,11 @@ def test_chat_core_commands_and_no_duplicate_exercise(
     tmp_path,
 ) -> None:
     settings = Settings(
-        _env_file=None,  # type: ignore[call-arg]
-        deepseek_api_key="test",
-        db_path=tmp_path / "aho.db",
+        **{
+            "_env_file": None,
+            "deepseek_api_key": "test",
+            "db_path": tmp_path / "aho.db",
+        },
     )
     student = repository.create_student("fernando", "Fernando")
     context = ChatContext(

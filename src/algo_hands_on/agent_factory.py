@@ -6,6 +6,7 @@ from agno.models.deepseek import DeepSeek
 from agno.skills import LocalSkills, Skills
 
 from algo_hands_on.config import Settings
+from algo_hands_on.db.agno_tables import AGNO_TABLE_NAMES
 from algo_hands_on.hooks import post_run_validate, pre_run_context
 from algo_hands_on.schemas import TutorTurn
 
@@ -71,11 +72,7 @@ def build_agent(settings: Settings) -> Agent:
     skills = Skills(loaders=[LocalSkills(str(settings.skills_dir))])
     agno_db = SqliteDb(
         db_file=str(settings.db_path),
-        session_table="agno_sessions",
-        memory_table="agno_memories",
-        metrics_table="agno_metrics",
-        eval_table="agno_evals",
-        versions_table="agno_schema_versions",
+        **AGNO_TABLE_NAMES,
     )
     model = build_deepseek_model(settings)
     base_kwargs: dict = {

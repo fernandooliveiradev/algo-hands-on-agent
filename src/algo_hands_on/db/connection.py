@@ -30,12 +30,13 @@ class SQLiteConnectionFactory:
     @contextmanager
     def transaction(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
         connection = self.connect()
+        committed = False
         try:
             connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             yield connection
             connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
+            committed = True
         finally:
+            if not committed:
+                connection.rollback()
             connection.close()

@@ -1,6 +1,7 @@
 """Testes para detecção de duplicações no hook."""
 
 import pytest
+
 from algo_hands_on.hooks import _detect_duplicate_paragraphs
 
 

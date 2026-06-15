@@ -7,7 +7,7 @@ from algo_hands_on.schemas import TutorTurn
 from algo_hands_on.services import tutoring
 
 
-class FakeAgent:
+class AgentStub:
     def __init__(self, *, chunks: Iterable[str] = (), plain: str | None = None) -> None:
         self.chunks = list(chunks)
         self.plain = plain
@@ -27,7 +27,7 @@ class FakeAgent:
             yield SimpleNamespace(event="RunContent", content=chunk, run_id="run-stream")
 
 
-class FakeParser:
+class ParserStub:
     def __init__(self, *, fail: bool = False, content: object | None = None) -> None:
         self.fail = fail
         self.content = content
@@ -47,15 +47,17 @@ def make_service(
     monkeypatch,
     repository: ProgressRepository,
     tmp_path,
-    agent: FakeAgent,
-    parser: FakeParser | None = None,
+    agent: AgentStub,
+    parser: ParserStub | None = None,
 ) -> tutoring.TutoringService:
     monkeypatch.setattr(tutoring, "build_agent", lambda settings: agent)
-    monkeypatch.setattr(tutoring, "build_parser_agent", lambda settings: parser or FakeParser())
+    monkeypatch.setattr(tutoring, "build_parser_agent", lambda settings: parser or ParserStub())
     settings = Settings(
-        _env_file=None,  # type: ignore[call-arg]
-        deepseek_api_key="test",
-        db_path=tmp_path / "aho.db",
+        **{
+            "_env_file": None,
+            "deepseek_api_key": "test",
+            "db_path": tmp_path / "aho.db",
+        },
     )
     return tutoring.TutoringService(settings, repository)
 
@@ -73,7 +75,7 @@ def test_streaming_turn_uses_agno_events_and_persists(
         monkeypatch,
         repository,
         tmp_path,
-        FakeAgent(chunks=["Oi, ", "Fernando."]),
+        AgentStub(chunks=["Oi, ", "Fernando."]),
     )
 
     events = list(
@@ -107,8 +109,8 @@ def test_non_streaming_turn_falls_back_when_parser_fails(
         monkeypatch,
         repository,
         tmp_path,
-        FakeAgent(plain="Resposta bruta."),
-        FakeParser(fail=True),
+        AgentStub(plain="Resposta bruta."),
+        ParserStub(fail=True),
     )
 
     turn = service.run_turn(
@@ -121,6 +123,99 @@ def test_non_streaming_turn_falls_back_when_parser_fails(
     assert turn.module_id == 0
 
 
+def test_non_streaming_turn_falls_back_when_parser_returns_invalid_dict(
+    monkeypatch,
+    repository: ProgressRepository,
+    tmp_path,
+) -> None:
+    service = make_service(
+        monkeypatch,
+        repository,
+        tmp_path,
+        AgentStub(plain="Resposta bruta."),
+        ParserStub(content={"message_markdown": "", "module_id": 0}),
+    )
+
+    turn = service.run_turn(
+        student_id="fernando",
+        session_id="sessao",
+        message="oi",
+    )
+
+    assert turn.message_markdown == "Resposta bruta."
+    assert turn.module_id == 0
+
+
+def test_non_streaming_turn_persists_evaluation_when_parser_fails(
+    monkeypatch,
+    repository: ProgressRepository,
+    tmp_path,
+) -> None:
+    service = make_service(
+        monkeypatch,
+        repository,
+        tmp_path,
+        AgentStub(
+            plain=(
+                "Boa análise.\n\n"
+                "<!--EVALUATION_START-->\n"
+                '{"result":"correct","score":0.91,"evidence_kind":"direct_application"}\n'
+                "<!--EVALUATION_END-->"
+            )
+        ),
+        ParserStub(fail=True),
+    )
+
+    turn = service.run_turn(
+        student_id="fernando",
+        session_id="sessao",
+        message="oi",
+    )
+
+    snapshot = repository.get_progress_snapshot("fernando")
+    assert turn.message_markdown == "Boa análise."
+    assert turn.evaluation is not None
+    assert snapshot["recent_attempts"][0]["result"] == "correct"
+    assert snapshot["recent_attempts"][0]["competency_key"] == "objetivo-de-aprendizagem"
+    assert snapshot["evidence"][0]["satisfied"] == 1
+
+
+def test_evaluation_module_is_guarded_independently_from_turn(
+    monkeypatch,
+    repository: ProgressRepository,
+    tmp_path,
+) -> None:
+    parser_turn = TutorTurn(
+        message_markdown="texto parser",
+        module_id=0,
+        evaluation={
+            "result": "correct",
+            "score": 0.9,
+            "module_id": 12,
+            "competency_key": "classes-objetos",
+            "evidence_kind": "direct_application",
+        },
+    )
+    service = make_service(
+        monkeypatch,
+        repository,
+        tmp_path,
+        AgentStub(plain="Texto"),
+        ParserStub(content=parser_turn),
+    )
+
+    turn = service.run_turn(
+        student_id="fernando",
+        session_id="sessao",
+        message="oi",
+    )
+
+    assert turn.module_id == 0
+    assert turn.evaluation is not None
+    assert turn.evaluation.module_id == 0
+    assert turn.evaluation.competency_key == "objetivo-de-aprendizagem"
+
+
 def test_streaming_turn_sanitizes_internal_narration_and_emojis(
     monkeypatch,
     repository: ProgressRepository,
@@ -130,7 +225,7 @@ def test_streaming_turn_sanitizes_internal_narration_and_emojis(
         monkeypatch,
         repository,
         tmp_path,
-        FakeAgent(
+        AgentStub(
             chunks=[
                 "Vou buscar as orientações para este momento inicial.",
                     "Perfeito! Vamos começar.\U0001f680\U0001f447",
@@ -162,7 +257,7 @@ def test_streaming_turn_handles_cumulative_content(
         monkeypatch,
         repository,
         tmp_path,
-        FakeAgent(chunks=["Oi", "Oi, Fernando.", "Oi, Fernando."]),
+        AgentStub(chunks=["Oi", "Oi, Fernando.", "Oi, Fernando."]),
     )
 
     events = list(
@@ -185,7 +280,7 @@ def test_parse_turn_preserves_valid_module_zero(
     repository: ProgressRepository,
     tmp_path,
 ) -> None:
-    service = make_service(monkeypatch, repository, tmp_path, FakeAgent(chunks=["Texto"]))
+    service = make_service(monkeypatch, repository, tmp_path, AgentStub(chunks=["Texto"]))
     repository.create_student("fernando", "Fernando")
     repository.set_current_module("fernando", 2, reason="test")
 
@@ -210,8 +305,8 @@ def test_parse_turn_accepts_json_string_content(
         monkeypatch,
         repository,
         tmp_path,
-        FakeAgent(chunks=["Texto"]),
-        FakeParser(content=turn_data.model_dump_json()),
+        AgentStub(chunks=["Texto"]),
+        ParserStub(content=turn_data.model_dump_json()),
     )
     repository.create_student("fernando", "Fernando")
 

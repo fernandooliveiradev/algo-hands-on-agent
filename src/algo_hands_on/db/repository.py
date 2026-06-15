@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from algo_hands_on.curriculum import MODULES, get_module, next_module_id
+from algo_hands_on.db.agno_tables import AGNO_DATA_TABLES
 from algo_hands_on.db.connection import SQLiteConnectionFactory
 from algo_hands_on.schemas import AttemptResult, EvaluationResult, EvidenceKind
 
@@ -28,10 +29,7 @@ class ProgressRepository:
         "aho_module_progress",
         "aho_student_progress",
         "aho_students",
-        "agno_sessions",
-        "agno_memories",
-        "agno_metrics",
-        "agno_evals",
+        *AGNO_DATA_TABLES,
     )
 
     def __init__(self, db_path: Path) -> None:
@@ -165,6 +163,7 @@ class ProgressRepository:
         exercise_statement: str | None = None,
     ) -> dict[str, Any]:
         self.get_student(student_id)
+        self._validate_evaluation(evaluation)
         attempt_id = str(uuid.uuid4())
         prompt_hash = (
             hashlib.sha256(exercise_statement.encode("utf-8")).hexdigest()
@@ -278,6 +277,16 @@ class ProgressRepository:
             {"attempt_id": attempt_id, **evaluation.model_dump(mode="json")},
         )
         return {"attempt_id": attempt_id, "progress": self.get_progress_snapshot(student_id)}
+
+    @staticmethod
+    def _validate_evaluation(evaluation: EvaluationResult) -> None:
+        module = get_module(evaluation.module_id)
+        if evaluation.competency_key not in module.competencies:
+            msg = (
+                f"Competência inválida para o módulo {evaluation.module_id}: "
+                f"{evaluation.competency_key}"
+            )
+            raise ValueError(msg)
 
     @staticmethod
     def _competency_status(evaluation: EvaluationResult) -> str:
