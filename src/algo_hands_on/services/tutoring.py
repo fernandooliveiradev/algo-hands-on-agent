@@ -74,8 +74,9 @@ class TutoringService:
             "curriculum_source": "TRILHA-AHO.md",
             "progress_policy": {
                 "module_completion_is_computed_by_application": True,
-                "minimum_independent_score": 0.8,
+                "module_passing_average": self.repository.MODULE_PASSING_SCORE,
                 "required_evidence": list(self.repository.REQUIRED_EVIDENCE),
+                "module_advances_when": "average >= 0.7 with all five evidence categories covered",
             },
         }
 

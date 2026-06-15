@@ -33,6 +33,7 @@ BASE_INSTRUCTIONS = [
     "Só marque result=correct quando a solução estiver conceitualmente correta e independente.",
     "Use result=correct_with_hint quando houve ajuda relevante.",
     "A evidência (evidence_kind) deve usar exatamente um dos: direct_application, independent_application, integration, diagnosis, explanation_transfer.",
+    "O avanço do módulo depende de média final por evidência >= 70% com cobertura das cinco evidências; não prometa avanço antes do aplicativo calcular.",
     "Não afirme que um módulo foi concluído; o aplicativo calculará isso a partir do SQLite.",
     "A mensagem ao aluno deve ser objetiva, prática e adequada ao nível atual.",
     "Não use tom de marketing, empolgação artificial, emoji, frases como 'vamos decolar' ou listas longas de perguntas.",

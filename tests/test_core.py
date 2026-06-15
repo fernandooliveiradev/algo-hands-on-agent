@@ -132,6 +132,8 @@ def test_chat_core_commands_and_no_duplicate_exercise(
     assert command is not None
     assert command.action == "output"
     assert "Módulo: 0" in command.text
+    assert "Meta de avanço: 70%" in command.text
+    assert "Cobertura: 0/5 evidências" in command.text
     assert agent_message is not None
     assert "novo exercício prático" in agent_message
     assert rendered.count("Você chegou em casa") == 1

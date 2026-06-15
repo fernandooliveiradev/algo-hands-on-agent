@@ -29,4 +29,6 @@ Ensinar pensamento computacional, lógica, algoritmos e Python por prática adap
 - `diagnosis`
 - `explanation_transfer`
 
-Cada evidência só conta para domínio quando o resultado é `correct`, sem dica, com nota mínima de 0,8.
+Cada turno avaliado deve registrar nota de `0.0` a `1.0` no serviço de progresso.
+O módulo avança quando as cinco evidências foram cobertas e a média final por evidência atinge no mínimo `0,7`.
+Cada evidência usa sua melhor nota registrada para compor essa média final, que vai de `0%` a `100%`.

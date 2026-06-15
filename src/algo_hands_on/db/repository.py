@@ -21,6 +21,7 @@ class ProgressRepository:
     """Repositório transacional do domínio pedagógico do AHO."""
 
     REQUIRED_EVIDENCE = tuple(item.value for item in EvidenceKind)
+    MODULE_PASSING_SCORE = 0.7
     CLEAN_TABLES = (
         "aho_exercise_attempts",
         "aho_module_evidence",
@@ -132,6 +133,10 @@ class ProgressRepository:
 
         current = dict(progress)
         module = get_module(current["current_module"])
+        evidence_count = len(evidence_rows)
+        evidence_at_target = sum(
+            1 for row in evidence_rows if float(row["best_score"]) >= self.MODULE_PASSING_SCORE
+        )
         return {
             "student": self.get_student(student_id),
             "current": {
@@ -140,6 +145,10 @@ class ProgressRepository:
                 "module_slug": module.slug,
                 "domain_skill": module.domain_skill,
                 "module_competencies": list(module.competencies),
+                "module_average_target": self.MODULE_PASSING_SCORE,
+                "evidence_total_required": len(self.REQUIRED_EVIDENCE),
+                "evidence_coverage_count": evidence_count,
+                "evidence_at_target_count": evidence_at_target,
             },
             "modules": [
                 {
@@ -253,7 +262,7 @@ class ProgressRepository:
                         evaluation.module_id,
                         evidence_kind,
                         evaluation.score,
-                        int(independent_success),
+                        int(evaluation.score >= self.MODULE_PASSING_SCORE),
                         attempt_id,
                     ),
                 )
@@ -290,7 +299,10 @@ class ProgressRepository:
 
     @staticmethod
     def _competency_status(evaluation: EvaluationResult) -> str:
-        if evaluation.result == AttemptResult.CORRECT and not evaluation.used_hint and evaluation.score >= 0.8:
+        if (
+            evaluation.result in {AttemptResult.CORRECT, AttemptResult.CORRECT_WITH_HINT}
+            and evaluation.score >= ProgressRepository.MODULE_PASSING_SCORE
+        ):
             return "mastered"
         if evaluation.result == AttemptResult.CORRECT_WITH_HINT or evaluation.used_hint:
             return "practicing"
@@ -309,10 +321,10 @@ class ProgressRepository:
             """,
             (student_id, module_id),
         ).fetchall()
-        satisfied = {row["evidence_kind"] for row in evidence if row["satisfied"] == 1}
         score = sum(float(row["best_score"]) for row in evidence) / len(self.REQUIRED_EVIDENCE)
         score = min(score, 1.0)
-        mastered = set(self.REQUIRED_EVIDENCE).issubset(satisfied)
+        coverage_complete = len(evidence) == len(self.REQUIRED_EVIDENCE)
+        mastered = coverage_complete and score >= self.MODULE_PASSING_SCORE
 
         connection.execute(
             """

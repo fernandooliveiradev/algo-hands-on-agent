@@ -99,13 +99,16 @@ A bateria final de cada módulo contém cinco evidências:
 
 O aluno conclui o módulo quando:
 
-* demonstra as cinco competências;
-* resolve a tentativa final sem depender de dica;
-* explica o raciocínio com suas palavras;
-* testa casos relevantes;
-* não apresenta lacunas críticas nos pré-requisitos.
+* cobre as cinco evidências do módulo;
+* atinge média final por evidência de pelo menos 70%;
+* demonstra compreensão suficiente para seguir sem lacunas críticas nos pré-requisitos;
+* explica o raciocínio com suas palavras quando a atividade exigir isso;
+* testa ou valida casos relevantes quando o formato da tarefa pedir esse comportamento.
 
-Uma resposta correta após uma dica exige uma nova variação independente.
+Cada turno avaliado deve gerar uma nota entre 0 e 1 persistida no serviço de progresso.
+Para cada evidência, a aplicação considera a melhor nota registrada naquele módulo.
+A média final do módulo é a média dessas cinco melhores notas e, por isso, varia de 0% a 100%.
+Uma resposta com dica ainda pode entrar na média, mas a nota precisa refletir corretamente o nível de autonomia demonstrado.
 
 Quando apenas uma competência falhar, o agente deve remediar aquela competência e aplicar uma nova evidência equivalente. Não é necessário reiniciar todo o módulo.
 

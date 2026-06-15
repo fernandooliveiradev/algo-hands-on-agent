@@ -17,8 +17,9 @@ calculado pela aplicação a partir de evidências persistidas no banco.
 - O tutor gera exercícios dinamicamente, respeitando módulo, histórico e nível de independência.
 - A resposta do agente é normalizada em `TutorTurn` antes de qualquer persistência pedagógica.
 - Correções separam raciocínio, algoritmo e sintaxe.
-- O progresso só avança quando as cinco evidências obrigatórias são satisfeitas.
-- Cada evidência exige `result=correct`, sem dica, com nota mínima `0.8`.
+- Cada turno avaliado entra no banco com nota de `0%` a `100%`.
+- O progresso avança quando as 5 evidências do módulo foram cobertas e a média final por evidência atinge `70%`.
+- A média final do módulo vai de `0%` a `100%`, usando a melhor nota registrada em cada evidência.
 - O SQLite registra alunos, progresso, tentativas, evidências, eventos e dados operacionais do Agno.
 
 ## Stack
@@ -174,7 +175,7 @@ uv run python -m pytest tests/test_persistence.py tests/test_integration_evaluat
 ```
 
 Esses testes cobrem criação de aluno, gravação de tentativa, evidências,
-avanço de módulo, isolamento por aluno, reset, limpeza do banco, extração de
+avanço de módulo por média, isolamento por aluno, reset, limpeza do banco, extração de
 avaliação e fallback do parser.
 
 3. Smoke test sem chamar LLM:
@@ -219,6 +220,21 @@ with TemporaryDirectory() as tmp:
 Se os três níveis passam, o banco está comunicando com o domínio principal:
 schema, repositório, regras de domínio, transações e leitura de progresso.
 
+## Regra de Progressão
+
+O aluno vê uma regra simples:
+
+- cada turno respondido pode gerar uma avaliação registrada no banco;
+- cada módulo usa 5 evidências curriculares;
+- a aplicação guarda a melhor nota obtida em cada evidência;
+- a média final do módulo é a média dessas 5 melhores notas;
+- o avanço acontece quando a cobertura chega a `5/5` evidências e a média final fica em `70%` ou mais.
+
+Exemplo:
+
+- se o aluno cobriu 3 evidências com notas `80`, `70` e `60`, a cobertura ainda é `3/5`, então o módulo não avança;
+- se ele cobriu as 5 evidências com `80`, `70`, `60`, `70` e `70`, a média final é `70%` e o módulo pode avançar.
+
 ## Qualidade
 
 ```bash
@@ -250,6 +266,13 @@ As cinco evidências de checkpoint são:
 - `integration`
 - `diagnosis`
 - `explanation_transfer`
+
+A interface deve deixar isso explícito para o aluno com:
+
+- média atual do módulo;
+- meta de avanço de `70%`;
+- cobertura atual de evidências;
+- quantidade de evidências já acima da meta.
 
 ## API
 

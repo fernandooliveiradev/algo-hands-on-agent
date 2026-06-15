@@ -130,7 +130,7 @@ Ao executar `aho chat`, você entra em uma conversa interativa com o tutor. A te
 | Comando | Descrição |
 |---------|-----------|
 | `/progresso` | Lista completa com todos os módulos, estados e percentuais |
-| `/checkpoint` | Evidências do módulo atual com notas e status (✓/✗) |
+| `/checkpoint` | Evidências do módulo atual com notas, cobertura e meta de avanço |
 | `/modulos` | Lista os 17 módulos da trilha |
 | `/historico` | Últimas 10 tentativas com resultado, nota, e data |
 | `/sessoes` | Sessões anteriores do aluno (ID, mensagens, última atividade) |
@@ -153,10 +153,11 @@ Ao executar `aho chat`, você entra em uma conversa interativa com o tutor. A te
 
 ## Tela inicial
 
-Ao abrir o chat, você vê um cabeçalho fixo com aluno, sessão, módulo atual, nível de independência, competência, domínio e checkpoint. O histórico fica no centro da tela e a entrada permanece fixa no rodapé.
+Ao abrir o chat, você vê um cabeçalho fixo com aluno, sessão, módulo atual, nível de independência, média do módulo e cobertura das evidências. O histórico fica no centro da tela e a entrada permanece fixa no rodapé.
 
-- **Barra de domínio**: progresso percentual do módulo atual baseado nas 5 evidências.
-- **Checkpoint**: mostra quais evidências foram satisfeitas (✓ verde) ou não (✗ vermelho).
+- **Barra de média**: mostra a média atual do módulo, de `0%` a `100%`.
+- **Cobertura**: mostra quantas das 5 evidências já foram avaliadas.
+- **Meta de avanço**: o módulo avança com cobertura `5/5` e média final `>= 70%`.
 - **Nível**: Observador → Guiado → Independente → Transferência. Avança automaticamente ao dominar módulos.
 
 ## Checkpoint e evidências
@@ -170,9 +171,11 @@ Cada módulo possui 5 tipos de evidência que precisam ser demonstradas:
 5. **Explicação/transferência** — Explicar o raciocínio ou aplicar em novo contexto
 
 **Regras importantes:**
-- Cada evidência exige nota >= 0.8 **sem dica** para ser satisfeita.
-- Acertos com dica (`/dica`) são registrados mas **não** concluem a evidência.
-- O módulo só avança quando as 5 evidências estão satisfeitas.
+- Cada turno avaliado recebe uma nota entre `0%` e `100%`.
+- O sistema guarda a melhor nota obtida em cada evidência do módulo.
+- A média final do módulo é a média dessas 5 melhores notas.
+- O módulo só avança quando a cobertura chega a `5/5` evidências e a média final fica em `70%` ou mais.
+- Respostas com dica continuam registradas; o que pesa para o avanço é a nota final daquele turno.
 - O progresso é calculado automaticamente pelo SQLite — o agente não decide avanço.
 
 ## Sessões

@@ -151,8 +151,29 @@ def plain_modules() -> str:
     return "\n".join(lines)
 
 
+def module_progress_facts(snapshot: dict) -> dict[str, float | int | str | bool]:
+    current = snapshot["current"]
+    current_module = current["current_module"]
+    module_row = next(row for row in snapshot["modules"] if row["module_id"] == current_module)
+    average = float(module_row["mastery_score"])
+    target = float(current["module_average_target"])
+    coverage = int(current["evidence_coverage_count"])
+    total = int(current["evidence_total_required"])
+    evidence_at_target = int(current["evidence_at_target_count"])
+    return {
+        "average": average,
+        "target": target,
+        "coverage": coverage,
+        "total": total,
+        "evidence_at_target": evidence_at_target,
+        "ready_to_advance": bool(module_row["status"] == "mastered"),
+    }
+
+
 def plain_progress(snapshot: dict) -> str:
     current = snapshot["current"]
+    facts = module_progress_facts(snapshot)
+    readiness = "apto para avançar" if facts["ready_to_advance"] else "ainda em consolidação"
     lines = [
         f"{current['module_title']}",
         (
@@ -160,8 +181,17 @@ def plain_progress(snapshot: dict) -> str:
             f"Nível: {current['independence_level']} | "
             f"Competência: {current['current_competency'] or UNDEFINED_COMPETENCY}"
         ),
+        (
+            f"Média atual: {facts['average'] * 100:.0f}% | "
+            f"Meta de avanço: {facts['target'] * 100:.0f}%"
+        ),
+        (
+            f"Cobertura: {facts['coverage']}/{facts['total']} evidências | "
+            f"Evidências na meta: {facts['evidence_at_target']}/{facts['total']} | "
+            f"Status: {readiness}"
+        ),
         "",
-        "ID  Estado       Domínio  Título",
+        "ID  Estado       Média  Título",
     ]
     for row in snapshot["modules"]:
         marker = ">" if row["module_id"] == current["current_module"] else " "
@@ -173,14 +203,23 @@ def plain_progress(snapshot: dict) -> str:
 
 
 def plain_evidence(snapshot: dict) -> str:
+    facts = module_progress_facts(snapshot)
     evidence_by_kind = {item["evidence_kind"]: item for item in snapshot.get("evidence", [])}
-    lines = [f"Checkpoint - {snapshot['current']['module_title']}"]
+    lines = [
+        f"Checkpoint - {snapshot['current']['module_title']}",
+        f"Média atual: {facts['average'] * 100:.0f}% | Meta de avanço: {facts['target'] * 100:.0f}%",
+        (
+            f"Cobertura: {facts['coverage']}/{facts['total']} evidências | "
+            f"Evidências na meta: {facts['evidence_at_target']}/{facts['total']}"
+        ),
+        "",
+    ]
     for kind, label in EVIDENCE_DISPLAY_LABELS.items():
         evidence = evidence_by_kind.get(kind, {"best_score": 0.0, "satisfied": 0})
         status = "sim" if evidence.get("satisfied") else "não"
         lines.append(
             f"{label:<28} nota {evidence.get('best_score', 0.0) * 100:>3.0f}%  "
-            f"satisfeita: {status}"
+            f"na meta: {status}"
         )
     return "\n".join(lines)
 

@@ -8,11 +8,11 @@ from textual.containers import Container, VerticalScroll
 from textual.widgets import Header, Input, ProgressBar, Static
 
 from algo_hands_on.chat_core import (
-    EVIDENCE_DISPLAY_LABELS,
     INDEPENDENCE_LABELS,
     UNDEFINED_COMPETENCY,
     ChatContext,
     handle_chat_command,
+    module_progress_facts,
     prepare_agent_message,
     turn_history_text,
 )
@@ -31,7 +31,7 @@ class TutorTui(App[None]):
 
     #top {
         dock: top;
-        height: 6;
+        height: 7;
         padding: 0 1;
         background: #171b22;
         border-bottom: solid #2c3442;
@@ -49,7 +49,7 @@ class TutorTui(App[None]):
     }
 
     #checkpoint {
-        height: 1;
+        height: 2;
         color: #b9c3d1;
     }
 
@@ -269,13 +269,12 @@ class TutorTui(App[None]):
         self.query_one("#checkpoint", Static).update(self._checkpoint_line(snapshot), layout=False)
 
     def _checkpoint_line(self, snapshot: dict) -> str:
-        evidence_by_kind = {item["evidence_kind"]: item for item in snapshot.get("evidence", [])}
-        parts = []
-        for kind, label in EVIDENCE_DISPLAY_LABELS.items():
-            done = bool(evidence_by_kind.get(kind, {}).get("satisfied"))
-            marker = "OK" if done else "--"
-            parts.append(f"{marker} {label}")
-        return "  ".join(parts)
+        facts = module_progress_facts(snapshot)
+        return (
+            f"Média atual: {facts['average'] * 100:.0f}% | Meta de avanço: {facts['target'] * 100:.0f}%\n"
+            f"Cobertura: {facts['coverage']}/{facts['total']} evidências | "
+            f"Na meta: {facts['evidence_at_target']}/{facts['total']}"
+        )
 
     def _current_module_score(self, snapshot: dict) -> float:
         current_module = snapshot["current"]["current_module"]

@@ -28,7 +28,57 @@ def test_five_independent_evidences_advance_module(
     assert snapshot["current"]["current_module"] == 1
 
 
-def test_hint_and_incorrect_attempts_do_not_satisfy_evidence(
+def test_partial_coverage_does_not_advance_even_with_high_average(
+    repository: ProgressRepository,
+    make_evaluation: Callable[..., EvaluationResult],
+) -> None:
+    repository.create_student("aluno", "Aluno")
+
+    for kind in (
+        EvidenceKind.DIRECT,
+        EvidenceKind.INDEPENDENT,
+        EvidenceKind.INTEGRATION,
+        EvidenceKind.DIAGNOSIS,
+    ):
+        repository.record_evaluation(
+            student_id="aluno",
+            session_id="test",
+            evaluation=make_evaluation(kind, score=1.0),
+        )
+
+    snapshot = repository.get_progress_snapshot("aluno")
+    assert snapshot["current"]["current_module"] == 0
+    assert snapshot["current"]["evidence_coverage_count"] == 4
+    assert snapshot["modules"][0]["mastery_score"] == pytest.approx(0.8)
+
+
+def test_full_coverage_below_seventy_does_not_advance(
+    repository: ProgressRepository,
+    make_evaluation: Callable[..., EvaluationResult],
+) -> None:
+    repository.create_student("aluno", "Aluno")
+    scores = {
+        EvidenceKind.DIRECT: 0.9,
+        EvidenceKind.INDEPENDENT: 0.7,
+        EvidenceKind.INTEGRATION: 0.7,
+        EvidenceKind.DIAGNOSIS: 0.6,
+        EvidenceKind.EXPLANATION_TRANSFER: 0.4,
+    }
+
+    for kind, score in scores.items():
+        repository.record_evaluation(
+            student_id="aluno",
+            session_id="test",
+            evaluation=make_evaluation(kind, score=score),
+        )
+
+    snapshot = repository.get_progress_snapshot("aluno")
+    assert snapshot["current"]["current_module"] == 0
+    assert snapshot["current"]["evidence_coverage_count"] == 5
+    assert snapshot["modules"][0]["mastery_score"] == pytest.approx(0.66, abs=1e-6)
+
+
+def test_low_scores_do_not_put_evidence_on_target(
     repository: ProgressRepository,
     make_evaluation: Callable[..., EvaluationResult],
 ) -> None:
@@ -42,6 +92,7 @@ def test_hint_and_incorrect_attempts_do_not_satisfy_evidence(
             EvidenceKind.DIRECT,
             result=AttemptResult.CORRECT_WITH_HINT,
             used_hint=True,
+            score=0.6,
         ),
     )
     repository.record_evaluation(
@@ -72,6 +123,30 @@ def test_hint_and_incorrect_attempts_do_not_satisfy_evidence(
     incorrect_snapshot = repository.get_progress_snapshot("aluno-incorreto")
     assert incorrect_snapshot["competencies"][0]["hinted_successes"] == 0
     assert incorrect_snapshot["competencies"][0]["failed_attempts"] == 1
+
+
+def test_high_score_with_hint_counts_toward_module_average(
+    repository: ProgressRepository,
+    make_evaluation: Callable[..., EvaluationResult],
+) -> None:
+    repository.create_student("aluno", "Aluno")
+
+    for kind in EvidenceKind:
+        repository.record_evaluation(
+            student_id="aluno",
+            session_id="test",
+            evaluation=make_evaluation(
+                kind,
+                result=AttemptResult.CORRECT_WITH_HINT,
+                used_hint=True,
+                score=0.9,
+            ),
+        )
+
+    snapshot = repository.get_progress_snapshot("aluno")
+    assert snapshot["modules"][0]["status"] == "mastered"
+    assert snapshot["modules"][0]["mastery_score"] == pytest.approx(0.9)
+    assert snapshot["current"]["current_module"] == 1
 
 
 def test_record_evaluation_rejects_competency_outside_module(
